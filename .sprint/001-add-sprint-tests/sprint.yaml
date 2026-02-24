@@ -21,7 +21,7 @@ metadata:
   gitBranch: null
   labels: []
   parentComponent: sdk/cli
-  updatedAt: '2026-02-24T06:33:43.728825'
+  updatedAt: '2026-02-24T06:33:44.021011'
 name: 001-add-sprint-tests
 retro:
   actionItems: []
@@ -50,12 +50,12 @@ tasks:
   completedAt: '2026-02-24T06:33:43.728811'
 - id: task-005
   title: Run tests and verify coverage
-  status: todo
+  status: done
   type: implementation
   priority: medium
   startedAt: null
   firstCommitAt: null
-  completedAt: null
+  completedAt: '2026-02-24T06:33:44.021000'
 - id: task-007
   title: Add Makefile for code health checks
   status: todo
