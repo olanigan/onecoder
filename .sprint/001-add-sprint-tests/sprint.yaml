@@ -21,7 +21,7 @@ metadata:
   gitBranch: null
   labels: []
   parentComponent: sdk/cli
-  updatedAt: '2026-02-24T06:32:16.969102'
+  updatedAt: '2026-02-24T06:33:43.728825'
 name: 001-add-sprint-tests
 retro:
   actionItems: []
@@ -42,12 +42,12 @@ tasks:
   completedAt: '2026-02-24T06:32:16.969092'
 - id: task-004
   title: Implement test_task_lifecycle test case
-  status: todo
+  status: done
   type: implementation
   priority: medium
   startedAt: null
   firstCommitAt: null
-  completedAt: null
+  completedAt: '2026-02-24T06:33:43.728811'
 - id: task-005
   title: Run tests and verify coverage
   status: todo
