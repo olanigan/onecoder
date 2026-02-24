@@ -21,7 +21,7 @@ metadata:
   gitBranch: null
   labels: []
   parentComponent: sdk/cli
-  updatedAt: '2026-02-24T06:33:44.330377'
+  updatedAt: '2026-02-24T06:33:44.633627'
 name: 001-add-sprint-tests
 retro:
   actionItems: []
@@ -66,12 +66,12 @@ tasks:
   completedAt: '2026-02-24T06:33:44.330367'
 - id: task-008
   title: Research Astral ty tool
-  status: todo
+  status: done
   type: implementation
   priority: medium
   startedAt: null
   firstCommitAt: null
-  completedAt: null
+  completedAt: '2026-02-24T06:33:44.633618'
 - id: task-001
   title: Create tests/test_sprint.py for core sprint commands
   status: done
