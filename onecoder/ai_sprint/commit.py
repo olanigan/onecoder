@@ -70,7 +70,7 @@ def create_commit_with_trailers(
         return True
     except subprocess.CalledProcessError as e:
         # Print error for debugging
-        print(f"Git commit failed: {e.stderr}")
+        print(f"Git commit failed: {e.stderr} {e.stdout}")
         return False
 
 

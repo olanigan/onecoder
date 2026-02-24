@@ -3,7 +3,17 @@ import subprocess
 import sys
 import time
 import json
-from ..sync import find_repo_root
+from pathlib import Path
+
+
+def find_repo_root() -> Path:
+    """Find the project root directory (containing .git)."""
+    current = Path.cwd()
+    while current != current.parent:
+        if (current / ".git").exists():
+            return current
+        current = current.parent
+    return Path.cwd()
 
 
 @click.group(name="agent")

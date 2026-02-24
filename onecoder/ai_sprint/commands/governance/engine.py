@@ -1,7 +1,7 @@
 import subprocess
 import re
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from ..common import SprintStateManager
 
 
@@ -48,7 +48,7 @@ class CommitStateEngine:
             files.append(path)
         return list(set(files))
 
-    def analyze(self, sprint_id: str, fixed_task_id: str = None) -> Dict[str, Any]:
+    def analyze(self, sprint_id: str, fixed_task_id: Optional[str] = None) -> Dict[str, Any]:
         """Analyze changes and map to tasks. Returns a plan or a single task result."""
         changed_files = self.get_changed_files()
         if not changed_files:

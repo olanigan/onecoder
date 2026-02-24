@@ -12,17 +12,16 @@ from . import common
 @click.pass_context
 def generate_assets(ctx, sprint_id, dry_run):
     """Generate visual assets for sprint closure."""
-    project_root = common.get_project_root()
+    project_root = common.PROJECT_ROOT
 
     # Resolve Sprint ID
     if not sprint_id:
-        current_sprint = state.load_current_sprint(project_root)
-        if not current_sprint:
+        sprint_id = common.auto_detect_sprint_id()
+        if not sprint_id:
             click.secho(
                 "No active sprint found. Pass --sprint-id explicitly.", fg="red"
             )
             ctx.exit(1)
-        sprint_id = current_sprint["id"]
 
     sprint_dir = project_root / ".sprint" / sprint_id
     if not sprint_dir.exists():

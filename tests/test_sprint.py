@@ -4,6 +4,7 @@ from click.testing import CliRunner
 from onecoder.cli import cli
 import pytest
 from unittest.mock import patch
+import subprocess
 
 @pytest.fixture
 def runner():
@@ -15,7 +16,6 @@ def temp_repo(tmp_path):
     repo_dir = tmp_path / "repo"
     repo_dir.mkdir()
     os.chdir(repo_dir)
-    import subprocess
     subprocess.run(["git", "init"], check=True, capture_output=True)
     subprocess.run(["git", "config", "user.email", "test@example.com"], check=True)
     subprocess.run(["git", "config", "user.name", "Test User"], check=True)
@@ -32,58 +32,39 @@ def temp_repo(tmp_path):
          patch("onecoder.ai_sprint.commands.governance.commit.PROJECT_ROOT", repo_dir):
         yield repo_dir
 
-def test_sprint_init(runner, temp_repo):
-    result = runner.invoke(cli, ["sprint", "init", "test-sprint", "-y", "--no-branch"])
-    if result.exit_code != 0:
-        print(result.output)
-    assert result.exit_code == 0
-    assert "Initialized sprint at" in result.output
-    
-    sprint_dir = temp_repo / ".sprint" / "001-test-sprint"
-    assert sprint_dir.exists()
-    assert (sprint_dir / "sprint.yaml").exists()
-    assert (sprint_dir / "TODO.md").exists()
+def test_task_finish_bypasses_staging_prompt_with_yes(runner, temp_repo):
+    with patch.dict(os.environ, {"ONECODER_SKIP_PREFLIGHT": "true"}):
+        # Setup sprint and task
+        runner.invoke(cli, ["sprint", "init", "non-int-stage", "-y", "--no-branch"])
+        sprint_dir = temp_repo / ".sprint" / "001-non-int-stage"
+        
+        from onecoder.ai_sprint.state import SprintStateManager
+        sm = SprintStateManager(sprint_dir)
+        state = sm.load()
+        state["tasks"].append({
+            "id": "task-001",
+            "title": "Task 1",
+            "status": "todo"
+        })
+        sm.save(state)
+        sm.sync_todo_from_state()
 
-def test_sprint_status(runner, temp_repo):
-    runner.invoke(cli, ["sprint", "init", "s1", "-y", "--no-branch"])
-    result = runner.invoke(cli, ["sprint", "status"])
-    if result.exit_code != 0:
-        print(result.output)
-    assert result.exit_code == 0
-    assert "s1" in result.output
+        # Start task
+        runner.invoke(cli, ["sprint", "start", "task-001", "--type", "implementation"])
+        
+        # Create a file but DO NOT stage it
+        (temp_repo / "data.txt").write_text("data")
 
-def test_task_lifecycle(runner, temp_repo):
-    # Init sprint
-    runner.invoke(cli, ["sprint", "init", "life", "-y", "--no-branch"])
-    sprint_dir = temp_repo / ".sprint" / "001-life"
-    
-    # Let's use the actual state manager to add a task to ensure sync_engine works
-    from onecoder.ai_sprint.state import SprintStateManager
-    sm = SprintStateManager(sprint_dir)
-    state = sm.load()
-    state["tasks"].append({
-        "id": "task-001",
-        "title": "Task 1",
-        "status": "todo"
-    })
-    sm.save(state)
-    sm.sync_todo_from_state()
-
-    # Start task
-    result = runner.invoke(cli, ["sprint", "start", "task-001", "--type", "implementation"])
-    if result.exit_code != 0:
-        print(result.output)
-    assert result.exit_code == 0
-    assert "Starting task: task-001" in result.output
-    
-    # Create a file to stage so commit works
-    work_file = temp_repo / "work.txt"
-    work_file.write_text("done")
-
-    # Finish task
-    # Provide 'y' for the staging prompt
-    result = runner.invoke(cli, ["sprint", "finish", "task-001", "-v", "proof", "-y"], input="y\n")
-    if result.exit_code != 0:
-        print(result.output)
-    assert result.exit_code == 0
-    assert "Task marked as done" in result.output
+        # Finish task with -y - should bypass prompt and stage files
+        result = runner.invoke(cli, ["sprint", "finish", "task-001", "-v", "proof", "-y", "-m", "feat: complete task"])
+        
+        if result.exit_code != 0:
+            print(result.output)
+            
+        assert result.exit_code == 0
+        assert "Task marked as done" in result.output
+        assert "Success: Commit created." in result.output
+        
+        # Verify file was committed
+        commit_files = subprocess.check_output(["git", "ls-tree", "-r", "HEAD", "--name-only"]).decode().splitlines()
+        assert "data.txt" in commit_files

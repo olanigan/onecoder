@@ -21,7 +21,7 @@ metadata:
   gitBranch: null
   labels: []
   parentComponent: sdk/cli
-  updatedAt: '2026-02-23T22:01:46.517543'
+  updatedAt: '2026-02-23T22:18:40.299360'
 name: 001-add-sprint-tests
 retro:
   actionItems: []
@@ -32,53 +32,65 @@ status:
   phase: init
   state: active
 tasks:
-- id: task-001
-  title: Create tests/test_sprint.py for core sprint commands
-  status: in-progress
-  type: implementation
+- completedAt: '2026-02-23T22:18:40.299349'
+  firstCommitAt: null
+  id: task-001
   priority: medium
   startedAt: '2026-02-23T22:02:02.948140'
+  status: done
+  title: Create tests/test_sprint.py for core sprint commands
+  type: implementation
+- completedAt: null
   firstCommitAt: null
-  completedAt: null
-- id: task-002
+  id: task-002
+  priority: medium
+  startedAt: null
+  status: todo
   title: Implement test_sprint_init test case
-  status: todo
   type: implementation
+- completedAt: null
+  firstCommitAt: null
+  id: task-003
   priority: medium
   startedAt: null
-  firstCommitAt: null
-  completedAt: null
-- id: task-003
+  status: todo
   title: Implement test_sprint_status test case
-  status: todo
   type: implementation
+- completedAt: null
+  firstCommitAt: null
+  id: task-004
   priority: medium
   startedAt: null
-  firstCommitAt: null
-  completedAt: null
-- id: task-004
+  status: todo
   title: Implement test_task_lifecycle test case
-  status: todo
   type: implementation
+- completedAt: null
+  firstCommitAt: null
+  id: task-005
   priority: medium
   startedAt: null
-  firstCommitAt: null
-  completedAt: null
-- id: task-005
+  status: todo
   title: Run tests and verify coverage
-  status: todo
   type: implementation
+- completedAt: null
+  firstCommitAt: null
+  id: task-006
   priority: medium
   startedAt: null
-  firstCommitAt: null
-  completedAt: null
-- id: task-006
+  status: todo
   title: Final preflight and close sprint
-  status: todo
   type: implementation
-  priority: medium
-  startedAt: null
-  firstCommitAt: null
-  completedAt: null
+- id: task-007
+  status: todo
+  title: Add Makefile for code health checks
+- id: task-008
+  status: todo
+  title: Research Astral ty tool
+- id: task-009
+  status: done
+  title: Fix code health issues identified by Astral ty
+  type: implementation
+  startedAt: '2026-02-23T22:11:46.852268'
+  completedAt: '2026-02-23T22:18:26.145289'
 title: 001-add-sprint-tests
 version: 1.0.0

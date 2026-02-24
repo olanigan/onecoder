@@ -169,4 +169,5 @@ def finish(task_name, message, validation, spec_id, yes):
         status="done",
         validation=validation,
         spec_id=spec_id,
+        yes=yes,
     )

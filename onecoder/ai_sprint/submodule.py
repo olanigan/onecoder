@@ -5,11 +5,11 @@ from pathlib import Path
 from typing import List, Tuple
 
 
-def get_submodules(project_root: Path) -> List[Tuple[str, str]]:
-    """Get list of submodules with their paths and URLs.
+def get_submodules(project_root: Path) -> List[str]:
+    """Get list of submodules with their paths.
 
     Returns:
-        List of tuples (submodule_path, submodule_url)
+        List of submodule paths
     """
     try:
         result = subprocess.run(

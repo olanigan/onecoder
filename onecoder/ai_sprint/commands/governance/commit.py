@@ -27,6 +27,7 @@ from ...commit import create_commit_with_trailers
     multiple=True,
     help="Files to stage (can be repeated or comma-separated)",
 )
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompts")
 @click.argument("files_args", nargs=-1, type=click.Path())
 def commit(
     message,
@@ -38,6 +39,7 @@ def commit(
     spec_id,
     component,
     files,
+    yes,
     files_args,
 ):
     """Create atomic commit with metadata trailers."""
@@ -70,13 +72,14 @@ def commit(
     if not _validate_commit_context(task_id, sprint_id, spec_id):
         sys.exit(1)
 
-    task_id = _stage_files_helper(all_files, task_id=task_id, component=component)
+    # If yes is true and we have unstaged/untracked changes, they should be added
+    task_id = _stage_files_helper(all_files, task_id=task_id, component=component, yes=yes)
 
     trailers, active_sprint_id = _build_commit_trailers(
         message, None, sprint_id, component, task_id, status, validation, spec_id
     )
 
-    if create_commit_with_trailers(message, trailers):
+    if create_commit_with_trailers(message, trailers, cwd=PROJECT_ROOT):
         console.print("[bold green]Success:[/bold green] Commit created.")
     else:
         sys.exit(1)

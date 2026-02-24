@@ -87,7 +87,10 @@ def _validate_commit_context(task_id: str, sprint_id: str, spec_id: str):
     return True
 
 def _stage_files_helper(
-    files: List[str], task_id: str = None, component: str = None
+    files: List[str],
+    task_id: Optional[str] = None,
+    component: Optional[str] = None,
+    yes: bool = False,
 ) -> Optional[str]:
     active_sprint = auto_detect_sprint_id()
     staged_changes = subprocess.run(
@@ -114,10 +117,11 @@ def _stage_files_helper(
             cwd=PROJECT_ROOT,
         ).stdout.strip()
         if unstaged:
-            prompt = (
-                f"Stage all implementation files for [Task: {task_id or 'current'}]?"
-            )
-            if click.confirm(prompt, default=True):
+            # Check if there are any files to stage (either modified or untracked)
+            if yes or click.confirm(
+                f"Stage all implementation files for [Task: {task_id or 'current'}]?",
+                default=True,
+            ):
                 subprocess.run(["git", "add", "."], cwd=PROJECT_ROOT, check=True)
                 staged_changes = "all"
 
@@ -189,7 +193,7 @@ def _build_commit_trailers(
 def _run_guardian_check(reason, trailers):
     # Simplified Guardian check: skip if not installed or fails
     try:
-        from onecoder.governance.guardian import GovernanceGuardian
+        from onecoder.governance.guardian import GovernanceGuardian  # type: ignore
         guardian = GovernanceGuardian(PROJECT_ROOT / "governance.yaml")
         res = subprocess.run(
             ["git", "diff", "--cached", "--name-only"], capture_output=True, text=True
