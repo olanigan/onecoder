@@ -1,0 +1,412 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://onecoder.dev/schemas/sprint.json",
+  "title": "OneCoder Sprint State",
+  "description": "Standardized sprint state representation for cross-tool synchronization between sprint-cli, onecoder-cli, and devcenter",
+  "type": "object",
+  "required": [
+    "$schema",
+    "version",
+    "sprintId",
+    "name",
+    "status",
+    "metadata"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "format": "uri",
+      "description": "JSON Schema identifier for validation"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Schema version (semantic versioning)"
+    },
+    "sprintId": {
+      "type": "string",
+      "description": "Unique sprint identifier (e.g., '001-platform-consolidate')"
+    },
+    "name": {
+      "type": "string",
+      "description": "Sprint slug/name used in directory structure"
+    },
+    "title": {
+      "type": "string",
+      "description": "Human-readable sprint title"
+    },
+    "status": {
+      "type": "object",
+      "required": [
+        "phase",
+        "state"
+      ],
+      "properties": {
+        "phase": {
+          "type": "string",
+          "enum": [
+            "init",
+            "planning",
+            "research",
+            "implementation",
+            "validation",
+            "review",
+            "closed"
+          ],
+          "description": "Current AIDLC phase"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "active",
+            "paused",
+            "blocked",
+            "complete",
+            "archived"
+          ],
+          "description": "Overall sprint state"
+        },
+        "message": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Optional status message or block reason"
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "required": [
+        "createdAt",
+        "updatedAt"
+      ],
+      "properties": {
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp of sprint creation"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 timestamp of last update"
+        },
+        "createdBy": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Email or username of sprint creator"
+        },
+        "parentComponent": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Parent component/monorepo name"
+        },
+        "gitBranch": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Git branch associated with this sprint"
+        },
+        "labels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Sprint labels/tags"
+        }
+      }
+    },
+    "specifications": {
+      "type": "object",
+      "description": "Specification requirements tracking for traceability",
+      "properties": {
+        "implements": {
+          "type": "array",
+          "description": "Spec requirements this sprint implements",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}-\\d{3}$"
+          }
+        },
+        "validates": {
+          "type": "array",
+          "description": "Spec requirements this sprint validates/tests",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}-\\d{3}$"
+          }
+        },
+        "blocks": {
+          "type": "array",
+          "description": "Spec requirements blocked by this sprint",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}-\\d{3}$"
+          }
+        }
+      }
+    },
+    "goals": {
+      "type": "object",
+      "properties": {
+        "primary": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Primary sprint goal"
+        },
+        "secondary": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Secondary goals"
+        }
+      }
+    },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "status"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Unique task identifier"
+          },
+          "title": {
+            "type": "string",
+            "description": "Task title"
+          },
+          "description": {
+            "type": "string",
+            "description": "Detailed task description"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "implementation",
+              "fix",
+              "refactor",
+              "analysis",
+              "audit",
+              "docs",
+              "planning",
+              "chore",
+              "governance"
+            ],
+            "default": "implementation",
+            "description": "Task type determines validation requirements: implementation (requires commits), audit (requires issue files), docs/planning (requires artifacts)"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "backlog",
+              "todo",
+              "in-progress",
+              "review",
+              "done",
+              "blocked",
+              "migrated"
+            ],
+            "description": "Task status"
+          },
+          "migratedTo": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Sprint ID this task was migrated to (only for migrated status)"
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ],
+            "default": "medium"
+          },
+          "assignee": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Task assignee (human or agent)"
+          },
+          "specs": {
+            "type": "array",
+            "description": "Spec requirements this task implements",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Z]{3}-\\d{3}$"
+            },
+            "default": []
+          },
+          "commits": {
+            "type": "array",
+            "description": "Git commit hashes for this task",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{7,40}$"
+            },
+            "default": []
+          },
+          "blockedBy": {
+            "type": "array",
+            "description": "Task IDs that block this task",
+            "items": {
+              "type": "string"
+            },
+            "default": []
+          },
+          "startedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "completedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "ttuSeconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Time-to-Task-Understanding in seconds"
+          }
+        }
+      },
+      "description": "List of sprint tasks"
+    },
+    "artifacts": {
+      "type": "object",
+      "properties": {
+        "walkthrough": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "retrospective": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "features": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "media": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "recording",
+                  "screenshot",
+                  "log",
+                  "document"
+                ]
+              },
+              "path": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "git": {
+      "type": "object",
+      "properties": {
+        "branch": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "lastCommit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "hasUncommittedChanges": {
+          "type": "boolean"
+        }
+      }
+    },
+    "hooks": {
+      "type": "object",
+      "properties": {
+        "onInit": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "onTaskStart": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "onTaskComplete": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "onSprintClose": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "retro": {
+      "type": "object",
+      "properties": {
+        "summary": {
+          "type": "string",
+          "description": "Executive summary from RETRO.md"
+        },
+        "actionItems": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Action items parsed from RETRO.md"
+        }
+      }
+    }
+  }
+}

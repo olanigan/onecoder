@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "onecoder"
+version = "0.0.9"
+requires-python = ">=3.11, <3.13"
+description = "OneCoder: Local-first sprint management for coding agents."
+dependencies = [
+    # Core utilities
+    "pydantic",
+    "python-dotenv",
+    "PyYAML>=6.0.0",
+    # CLI & UI
+    "click>=8.1.0",
+    "rich>=13.0.0",
+    # ai-sprint bundled dependencies
+    "python-frontmatter>=1.0.0",
+    "pluggy>=1.0.0",
+    "jsonschema>=4.0.0",
+]
+
+[project.optional-dependencies]
+docs = [
+    "mkdocs>=1.6.1",
+    "mkdocs-material>=9.7.1",
+]
+
+[project.scripts]
+onecoder = "onecoder.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["onecoder*"]
+
+[tool.setuptools.package-data]
+onecoder = ["py.typed", "ai_sprint/schemas/*.json"]
+
+[dependency-groups]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+]
