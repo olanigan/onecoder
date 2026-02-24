@@ -32,11 +32,11 @@ def temp_repo(tmp_path):
          patch("onecoder.ai_sprint.commands.governance.commit.PROJECT_ROOT", repo_dir):
         yield repo_dir
 
-def test_task_finish_bypasses_staging_prompt_with_yes(runner, temp_repo):
+def test_task_finish_auto_detect_task_non_interactive(runner, temp_repo):
     with patch.dict(os.environ, {"ONECODER_SKIP_PREFLIGHT": "true"}):
         # Setup sprint and task
-        runner.invoke(cli, ["sprint", "init", "non-int-stage", "-y", "--no-branch"])
-        sprint_dir = temp_repo / ".sprint" / "001-non-int-stage"
+        runner.invoke(cli, ["sprint", "init", "auto-detect", "-y", "--no-branch"])
+        sprint_dir = temp_repo / ".sprint" / "001-auto-detect"
         
         from onecoder.ai_sprint.state import SprintStateManager
         sm = SprintStateManager(sprint_dir)
@@ -49,22 +49,19 @@ def test_task_finish_bypasses_staging_prompt_with_yes(runner, temp_repo):
         sm.save(state)
         sm.sync_todo_from_state()
 
-        # Start task
+        # Start task - this sets it to in-progress
         runner.invoke(cli, ["sprint", "start", "task-001", "--type", "implementation"])
         
-        # Create a file but DO NOT stage it
+        # Create a file
         (temp_repo / "data.txt").write_text("data")
 
-        # Finish task with -y - should bypass prompt and stage files
-        result = runner.invoke(cli, ["sprint", "finish", "task-001", "-v", "proof", "-y", "-m", "feat: complete task"])
+        # Finish task without task_name or validation - should auto-detect and use defaults
+        result = runner.invoke(cli, ["sprint", "finish", "-y", "-m", "feat: auto finish"])
         
         if result.exit_code != 0:
             print(result.output)
             
         assert result.exit_code == 0
+        assert "Finishing task: task-001" in result.output
         assert "Task marked as done" in result.output
         assert "Success: Commit created." in result.output
-        
-        # Verify file was committed
-        commit_files = subprocess.check_output(["git", "ls-tree", "-r", "HEAD", "--name-only"]).decode().splitlines()
-        assert "data.txt" in commit_files

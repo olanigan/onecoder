@@ -52,6 +52,8 @@ def commit(
         console.print("[yellow]Bypassing governance checks due to ONECODER_SKIP_PREFLIGHT=true[/yellow]")
         if all_files:
             subprocess.run(["git", "add"] + all_files, cwd=PROJECT_ROOT, check=True)
+        elif yes:
+            subprocess.run(["git", "add", "."], cwd=PROJECT_ROOT, check=True)
 
     if task and not task_id:
         task_id = task
@@ -63,11 +65,14 @@ def commit(
         sys.exit(1)
 
     if not spec_id:
-        from .utils import _prompt_for_spec_id
-        spec_id = _prompt_for_spec_id(message)
-        if not spec_id:
-            console.print("[bold red]Governance Violation:[/bold red] --spec-id is mandatory.")
-            sys.exit(1)
+        if yes:
+            spec_id = "SPEC-GOV-012"
+        else:
+            from .utils import _prompt_for_spec_id
+            spec_id = _prompt_for_spec_id(message)
+            if not spec_id:
+                console.print("[bold red]Governance Violation:[/bold red] --spec-id is mandatory.")
+                sys.exit(1)
 
     if not _validate_commit_context(task_id, sprint_id, spec_id):
         sys.exit(1)

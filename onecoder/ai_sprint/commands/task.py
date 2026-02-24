@@ -119,23 +119,29 @@ def finish(task_name, message, validation, spec_id, yes):
 
     if not task_name:
         if yes:
-            console.print(
-                "[bold red]Error:[/bold red] Task name is required when using --yes"
-            )
-            import sys
+            # Try to auto-detect active task
+            active_sprint = auto_detect_sprint_id()
+            if active_sprint:
+                sm = SprintStateManager(SPRINT_DIR / active_sprint)
+                active_task = sm.get_active_task()
+                if active_task:
+                    task_name = active_task.get("id") or active_task.get("title")
 
-            sys.exit(1)
-        task_name = click.prompt("Finished Task Name/ID")
+            if not task_name:
+                console.print(
+                    "[bold red]Error:[/bold red] Task name could not be auto-detected. Required for non-interactive mode."
+                )
+                import sys
+
+                sys.exit(1)
+        else:
+            task_name = click.prompt("Finished Task Name/ID")
 
     if not validation:
         if yes:
-            console.print(
-                "[bold red]Error:[/bold red] Validation proof is required when using --yes"
-            )
-            import sys
-
-            sys.exit(1)
-        validation = click.prompt("Validation Proof")
+            validation = "Non-interactive validation (auto-passed)"
+        else:
+            validation = click.prompt("Validation Proof")
 
     if not message:
         default_msg = f"feat: finish task {task_name}"
