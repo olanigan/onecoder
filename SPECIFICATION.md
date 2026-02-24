@@ -1,7 +1,7 @@
-# OneCoder OSS Specification
+# OneCoder CLI Specification
 
 ## Core Scope
-OneCoder OSS is an open-source development management framework.
+OneCoder CLI is an open-source development management framework.
 
 ## Governance & Sprints
 - **SPEC-OSS-001**: Standardized sprint lifecycle management using `ai-sprint`.

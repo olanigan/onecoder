@@ -1,4 +1,4 @@
-# OneCoder OSS
+# OneCoder CLI
 
 Local-first sprint management and governance for coding agents and humans.
 
