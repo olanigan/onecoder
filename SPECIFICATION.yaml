@@ -1,0 +1,14 @@
+project_name: 'OneCoder CLI - Release Candidate'
+specifications:
+  - id: SPEC-OSS-001
+    title: Standardized sprint lifecycle management
+    description: Implement and validate standardized sprint workflows using ai-sprint.
+  - id: SPEC-CORE-002
+    title: Core Metadata / Sprint YAML
+    description: Enforce and validate sprint metadata structure.
+  - id: SPEC-GOV-012
+    title: Zero Tech Debt / Cleanup / Docs
+    description: Continuous codebase health monitoring and remediation.
+  - id: SPEC-TECH-001
+    title: Technical Infrastructure / CI
+    description: Maintain robust CLI infrastructure, Makefiles, and test suites.
