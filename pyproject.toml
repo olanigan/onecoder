@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "onecoder"
-version = "0.0.9"
+version = "0.0.8"
 requires-python = ">=3.11, <3.13"
 description = "OneCoder: Local-first sprint management for coding agents."
 dependencies = [

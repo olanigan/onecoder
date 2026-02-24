@@ -1,0 +1,69 @@
+$schema: https://onecoder.dev/schemas/sprint.json
+version: 1.0.0
+sprintId: 003-s1
+name: 003-s1
+title: 003-s1
+status:
+  phase: init
+  state: active
+  message: null
+metadata:
+  createdAt: '2026-02-23T22:02:19.558672'
+  updatedAt: '2026-02-23T22:02:19.566642'
+  createdBy: null
+  parentComponent: null
+  gitBranch: null
+  labels:
+  - tech-debt
+goals:
+  primary: Tech Debt Remediation & Codebase Health
+  secondary: []
+tasks:
+- id: task-002
+  title: Baseline Debt Scan (onecoder tldr complexity)
+  status: todo
+  type: implementation
+  priority: medium
+  startedAt: null
+  firstCommitAt: null
+  completedAt: null
+- id: task-003
+  title: Identify high-complexity functions (>10)
+  status: todo
+  type: implementation
+  priority: medium
+  startedAt: null
+  firstCommitAt: null
+  completedAt: null
+- id: task-004
+  title: Refactor target components
+  status: todo
+  type: implementation
+  priority: medium
+  startedAt: null
+  firstCommitAt: null
+  completedAt: null
+- id: task-005
+  title: ''
+  status: todo
+  type: implementation
+  priority: medium
+  startedAt: null
+  firstCommitAt: null
+  completedAt: null
+git:
+  branch: null
+  lastCommit: null
+  hasUncommittedChanges: false
+hooks:
+  onInit: []
+  onTaskStart: []
+  onTaskComplete: []
+  onSprintClose: []
+retro:
+  summary: ''
+  actionItems: []
+artifacts:
+  readme: README.md
+  retro: RETRO.md
+  media: []

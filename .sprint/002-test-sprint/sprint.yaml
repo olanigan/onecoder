@@ -1,0 +1,52 @@
+$schema: https://onecoder.dev/schemas/sprint.json
+version: 1.0.0
+sprintId: 002-test-sprint
+name: 002-test-sprint
+title: 002-test-sprint
+status:
+  phase: init
+  state: active
+  message: null
+metadata:
+  createdAt: '2026-02-23T22:02:19.367546'
+  updatedAt: '2026-02-23T22:02:19.377938'
+  createdBy: null
+  parentComponent: null
+  gitBranch: null
+  labels: []
+goals:
+  primary: null
+  secondary: []
+tasks:
+- id: task-001
+  title: ''
+  status: todo
+  type: implementation
+  priority: medium
+  startedAt: null
+  firstCommitAt: null
+  completedAt: null
+- id: task-002
+  title: ''
+  status: todo
+  type: implementation
+  priority: medium
+  startedAt: null
+  firstCommitAt: null
+  completedAt: null
+git:
+  branch: null
+  lastCommit: null
+  hasUncommittedChanges: false
+hooks:
+  onInit: []
+  onTaskStart: []
+  onTaskComplete: []
+  onSprintClose: []
+retro:
+  summary: ''
+  actionItems: []
+artifacts:
+  readme: README.md
+  retro: RETRO.md
+  media: []

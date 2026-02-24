@@ -1,0 +1,84 @@
+$schema: https://onecoder.dev/schemas/sprint.json
+artifacts:
+  media: []
+  readme: README.md
+  retro: RETRO.md
+git:
+  branch: null
+  hasUncommittedChanges: false
+  lastCommit: null
+goals:
+  primary: Add unit tests for sprint commands (SPEC-SPRINT-001)
+  secondary: []
+hooks:
+  onInit: []
+  onSprintClose: []
+  onTaskComplete: []
+  onTaskStart: []
+metadata:
+  createdAt: '2026-02-23T22:01:26.172123'
+  createdBy: null
+  gitBranch: null
+  labels: []
+  parentComponent: sdk/cli
+  updatedAt: '2026-02-23T22:01:46.517543'
+name: 001-add-sprint-tests
+retro:
+  actionItems: []
+  summary: ''
+sprintId: 001-add-sprint-tests
+status:
+  message: null
+  phase: init
+  state: active
+tasks:
+- id: task-001
+  title: Create tests/test_sprint.py for core sprint commands
+  status: in-progress
+  type: implementation
+  priority: medium
+  startedAt: '2026-02-23T22:02:02.948140'
+  firstCommitAt: null
+  completedAt: null
+- id: task-002
+  title: Implement test_sprint_init test case
+  status: todo
+  type: implementation
+  priority: medium
+  startedAt: null
+  firstCommitAt: null
+  completedAt: null
+- id: task-003
+  title: Implement test_sprint_status test case
+  status: todo
+  type: implementation
+  priority: medium
+  startedAt: null
+  firstCommitAt: null
+  completedAt: null
+- id: task-004
+  title: Implement test_task_lifecycle test case
+  status: todo
+  type: implementation
+  priority: medium
+  startedAt: null
+  firstCommitAt: null
+  completedAt: null
+- id: task-005
+  title: Run tests and verify coverage
+  status: todo
+  type: implementation
+  priority: medium
+  startedAt: null
+  firstCommitAt: null
+  completedAt: null
+- id: task-006
+  title: Final preflight and close sprint
+  status: todo
+  type: implementation
+  priority: medium
+  startedAt: null
+  firstCommitAt: null
+  completedAt: null
+title: 001-add-sprint-tests
+version: 1.0.0
