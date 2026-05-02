@@ -8,9 +8,22 @@ from .sync_engine import sync_artifacts, sync_tasks_from_todo
 
 SCHEMA_PATH = Path(__file__).parent / "schemas" / "sprint.schema.json"
 
+# Import repository for DDD native mode
+try:
+    from onecoder.repositories.yaml_sprint_repo import YamlSprintRepository
+    from onecoder.domain.entities import Sprint
+    from onecoder.domain.value_objects import TaskStatus, SprintPhase
+    DDD_AVAILABLE = True
+except ImportError:
+    DDD_AVAILABLE = False
+
 
 class SprintStateManager:
-    """Manage sprint.yaml state file."""
+    """Manage sprint.yaml state file.
+    
+    DDD Native Mode: Uses SprintRepository internally when available.
+    Backward Compatibility: Returns dictionaries to maintain existing API.
+    """
 
     def __init__(self, sprint_dir: Path):
         self.sprint_dir = sprint_dir
@@ -25,6 +38,14 @@ class SprintStateManager:
             self.state_file = self.yaml_file
 
         self._schema = self._load_schema()
+        
+        # DDD Native: Initialize repository if available
+        self._repo = None
+        if DDD_AVAILABLE:
+            try:
+                self._repo = YamlSprintRepository(sprint_dir.parent)
+            except Exception:
+                pass
 
     def _load_schema(self) -> Dict[str, Any]:
         if not SCHEMA_PATH.exists():
@@ -33,6 +54,18 @@ class SprintStateManager:
             return json.load(f)
 
     def load(self) -> Dict[str, Any]:
+        # DDD Native Mode: Use repository if available
+        if self._repo and DDD_AVAILABLE:
+            try:
+                # Extract sprint identifier from directory name
+                sprint_name = self.sprint_dir.name
+                sprint = self._repo.find_by_name(sprint_name)
+                if sprint:
+                    return self._sprint_to_dict(sprint)
+            except Exception:
+                pass  # Fall through to legacy mode
+
+        # Legacy mode: Load from YAML/JSON file
         data: Dict[str, Any] = {}
         if self.yaml_file.exists():
             import yaml
@@ -53,6 +86,72 @@ class SprintStateManager:
                 raise ValueError(f"Invalid sprint state: {e.message}")
         return data
 
+    def _sprint_to_dict(self, sprint: "Sprint") -> Dict[str, Any]:
+        """Convert Sprint domain object to dictionary (for backward compatibility)."""
+        from onecoder.domain.value_objects import DomainModel
+        
+        metadata = {
+            "createdAt": sprint.created_at.isoformat() if sprint.created_at else None,
+            "updatedAt": sprint.updated_at.isoformat() if sprint.updated_at else None,
+            "createdBy": sprint.created_by,
+            "parentComponent": sprint.parent_component,
+            "gitBranch": sprint.git_branch,
+            "boundedContext": sprint.bounded_context,
+            "labels": list(sprint.labels),
+        }
+        
+        if sprint.bounded_context:
+            metadata["boundedContext"] = sprint.bounded_context
+        
+        return {
+            "$schema": "https://onecoder.dev/schemas/sprint.json",
+            "version": "1.0.0",
+            "sprintId": sprint.sprint_id,
+            "name": sprint.name,
+            "title": sprint.title,
+            "status": {
+                "phase": sprint.phase.value,
+                "state": sprint.state,
+                "message": None,
+            },
+            "metadata": metadata,
+            "goals": {
+                "primary": sprint.primary_goal,
+                "secondary": list(sprint.secondary_goals),
+            },
+            "tasks": [
+                {
+                    "id": t.task_id,
+                    "title": t.title,
+                    "description": t.description,
+                    "type": t.task_type,
+                    "status": t.status.value,
+                    "priority": t.priority,
+                    "assignee": None,
+                    "specs": list(t.specs),
+                    "commits": list(t.commits),
+                    "blockedBy": list(t.blocked_by),
+                    "startedAt": t.started_at.isoformat() if t.started_at else None,
+                    "completedAt": t.completed_at.isoformat() if t.completed_at else None,
+                    "firstCommitAt": t.first_commit_at.isoformat() if t.first_commit_at else None,
+                }
+                for t in sprint.tasks
+            ],
+            "git": {
+                "branch": sprint.git_branch,
+                "lastCommit": None,
+                "hasUncommittedChanges": False,
+            },
+            "hooks": {
+                "onInit": [],
+                "onTaskStart": [],
+                "onTaskComplete": [],
+                "onSprintClose": [],
+            },
+            "retro": {"summary": "", "actionItems": []},
+            "artifacts": {"readme": None, "retro": None, "media": []},
+        }
+
     def save(self, state: Dict[str, Any]) -> None:
         if self._schema:
             try:
@@ -60,9 +159,19 @@ class SprintStateManager:
             except ValidationError as e:
                 raise ValueError(f"Invalid sprint state: {e.message}")
 
+        # DDD Native Mode: Use repository if available
+        if self._repo and DDD_AVAILABLE:
+            try:
+                sprint = self._dict_to_sprint(state)
+                if sprint:
+                    self._repo.save(sprint)
+                    return
+            except Exception:
+                pass  # Fall through to legacy mode
+
         # Check for meaningful changes before writing
         current_state = self.load()
-        if current_state:
+        if current_state and not self._repo:  # Only check if not using repo
             # Create copies to avoid mutating originals during comparison
             s1 = current_state.copy()
             s2 = state.copy()
@@ -104,6 +213,50 @@ class SprintStateManager:
         else:
             with open(self.state_file, "w") as f:
                 json.dump(state, f, indent=2)
+
+    def _dict_to_sprint(self, state: Dict[str, Any]) -> Optional["Sprint"]:
+        """Convert dictionary to Sprint domain object."""
+        try:
+            from onecoder.domain.entities import Sprint, Task
+            from onecoder.domain.value_objects import TaskStatus, SprintPhase, DomainModel
+
+            # Parse tasks
+            tasks = []
+            for t_data in state.get("tasks", []):
+                task = Task(
+                    task_id=t_data.get("id", ""),
+                    title=t_data.get("title", ""),
+                    status=TaskStatus(t_data.get("status", "todo")),
+                    priority=t_data.get("priority", "medium"),
+                    task_type=t_data.get("type", "implementation"),
+                    description=t_data.get("description"),
+                    specs=t_data.get("specs", []),
+                    commits=t_data.get("commits", []),
+                    blocked_by=t_data.get("blockedBy", []),
+                )
+                tasks.append(task)
+
+            # Create Sprint aggregate
+            metadata = state.get("metadata", {})
+            sprint = Sprint(
+                sprint_id=state.get("sprintId", ""),
+                name=state.get("name", ""),
+                title=state.get("title"),
+                phase=SprintPhase(state.get("status", {}).get("phase", "init")),
+                state=state.get("status", {}).get("state", "active"),
+                bounded_context=metadata.get("boundedContext"),
+                labels=metadata.get("labels", []),
+                primary_goal=state.get("goals", {}).get("primary"),
+                secondary_goals=state.get("goals", {}).get("secondary", []),
+            )
+
+            # Add tasks
+            for task in tasks:
+                sprint._tasks.append(task)
+
+            return sprint
+        except Exception:
+            return None
 
     def update(self, updates: Dict[str, Any]) -> None:
         state = self.load() or updates

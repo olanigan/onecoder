@@ -72,6 +72,9 @@ class SprintPreflight:
             check_spec_alignment(self.repo_root, getattr(self, "staged_mode", False))
         )
 
+        # 11. DDD Compliance Check (Best Practice Mode)
+        self.results.append(self.check_ddd_compliance())
+
         # Calculate score
         valid_results = [
             r for r in self.results if isinstance(r, dict) and r.get("status")
@@ -403,4 +406,76 @@ class SprintPreflight:
             "name": "Zero Leakage Enforcement",
             "status": "passed",
             "message": "No prohibited files detected.",
+        }
+
+    def check_ddd_compliance(self) -> Dict[str, Any]:
+        """Check DDD compliance: Ubiquitous Language, BC structure, entity naming."""
+        warnings = []
+        suggestions = []
+
+        # Ensure required attributes exist (might not if called in isolation)
+        if not hasattr(self, 'staged_mode'):
+            self.staged_mode = False
+        if not hasattr(self, 'target_files'):
+            self.target_files = None
+
+        # Check 1: Sprint should have bounded context metadata
+        try:
+            state = self.state_manager.load()
+        except Exception:
+            state = {}
+
+        if state and "metadata" in state:
+            bc = state.get("metadata", {}).get("boundedContext")
+            if not bc:
+                warnings.append("No bounded context defined in sprint metadata")
+                suggestions.append("Add 'boundedContext' to sprint.yaml metadata")
+
+        # Check 2: Scan Python/JS files for generic naming (anti-pattern)
+        generic_terms = ["data", "info", "temp", "obj", "item", "thing"]
+        project_files = self._get_project_files()
+        offending_files = []
+
+        for p in project_files:
+            if p.suffix in {".py", ".ts", ".js"}:
+                try:
+                    content = p.read_text(errors="ignore")
+                    for term in generic_terms:
+                        # Check for variable/parameter names like "user_data", "temp_info"
+                        if re.search(rf"\b\w*{term}\w*\b", content):
+                            offending_files.append(p.relative_to(self.repo_root))
+                            break
+                except Exception:
+                    pass
+
+        if offending_files:
+            warnings.append(
+                f"Found {len(offending_files)} files with generic naming (data/info/temp)"
+            )
+
+        # Check 3: Directory structure suggests Bounded Contexts
+        src_dirs = [
+            d
+            for d in self.repo_root.iterdir()
+            if d.is_dir() and d.name not in {".git", "node_modules", ".venv", ".sprint"}
+        ]
+        has_bc_structure = any(
+            d.name in {"domain", "core", "modules", "features"} for d in src_dirs
+        )
+
+        if not has_bc_structure:
+            suggestions.append(
+                "Consider organizing code by Bounded Contexts (e.g., domain/, modules/)"
+            )
+
+        if warnings or suggestions:
+            return {
+                "name": "DDD Compliance",
+                "status": "warning" if warnings else "passed",
+                "message": f"{'; '.join(warnings)}. Suggestions: {'; '.join(suggestions[:2])}",
+            }
+        return {
+            "name": "DDD Compliance",
+            "status": "passed",
+            "message": "Code follows DDD patterns (Ubiquitous Language, BC structure).",
         }

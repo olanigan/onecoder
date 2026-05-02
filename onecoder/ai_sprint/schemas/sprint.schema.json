@@ -106,6 +106,45 @@
           ],
           "description": "Parent component/monorepo name"
         },
+        "boundedContext": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "DDD Bounded Context this sprint belongs to (e.g., SprintManagement, IssueGovernance)"
+        },
+        "domainModel": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "description": "DDD domain model metadata extracted from grill session",
+          "properties": {
+            "aggregateRoot": {
+              "type": "string",
+              "description": "Main aggregate root entity"
+            },
+            "entities": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "valueObjects": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "ubiquitousLanguage": {
+              "type": "array",
+              "items": {
+                "type": ["string", "object"]
+              },
+              "description": "Ubiquitous Language terms (string) or term-definition pairs (object)"
+            }
+          }
+        },
         "gitBranch": {
           "type": [
             "string",
@@ -165,9 +204,9 @@
         "secondary": {
           "type": "array",
           "items": {
-            "type": "string"
+            "type": ["string", "object"]
           },
-          "description": "Secondary goals"
+          "description": "Secondary goals (string or object with key-value pairs)"
         }
       }
     },
@@ -190,8 +229,11 @@
             "description": "Task title"
           },
           "description": {
-            "type": "string",
-            "description": "Detailed task description"
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Detailed task description (optional)"
           },
           "type": {
             "type": "string",
@@ -204,7 +246,9 @@
               "docs",
               "planning",
               "chore",
-              "governance"
+              "governance",
+              "verification",
+              "test"
             ],
             "default": "implementation",
             "description": "Task type determines validation requirements: implementation (requires commits), audit (requires issue files), docs/planning (requires artifacts)"
@@ -215,8 +259,10 @@
               "backlog",
               "todo",
               "in-progress",
+              "in_progress",
               "review",
               "done",
+              "completed",
               "blocked",
               "migrated"
             ],
