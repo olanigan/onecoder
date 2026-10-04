@@ -1,52 +1,23 @@
-# OneCoder OSS
+# OneCoder
 
-Local-first sprint management and governance for coding agents and humans.
+Harness-agnostic governance for coding agents: a contract (`AGENTS.md`), policy (`policy.toml`), deterministic gates (`onecoder` CLI, stdlib-only) and judgment skills (`skills/`). Works under Claude Code, Codex, Pi, OpenCode or any agent that reads `AGENTS.md`.
 
-## 🚀 Quick Start
-
-OneCoder is designed to work seamlessly with the [uv](https://docs.astral.sh/uv/) package manager.
-
-### 1. Global Installation (Recommended for Humans)
-Install OneCoder globally as a tool to use it across any project repository.
-
-```bash
-uv tool install onecoder --from git+https://github.com/olanigan/onecoder
+```sh
+uv tool install onecoder --from git+https://github.com/olanigan/onecoder   # or: bin/onecoder from a checkout
+onecoder doctor                  # policy valid? which tools exist?
+onecoder detect                  # recommended mode + isolation, with reasons
+onecoder task new my-task        # branch onecoder/my-task (+ optional worktree)
+onecoder adapt claude --write    # PreToolUse hook -> .claude/settings.local.json
+onecoder adapt git --write       # pre-commit -> `onecoder preflight --staged`
+onecoder finish                  # strict preflight incl. fresh-context review verdict
+python3 -m unittest discover -s tests
 ```
 
-Once installed, you can run commands directly:
-```bash
-onecoder guide
-onecoder sprint status
-```
+Modes: `human-driver` (asks you on warnings) and `yolo` (sandbox only; the hard floor still blocks). Worktrees are optional. Design and properties: `docs/DESIGN.md`.
 
-### 2. Local Execution (Recommended for Agents)
-For development or within automated workflows, run OneCoder directly from the source without global installation.
+Policy layers (later wins): built-in defaults < repo `policy.toml` < `<project>/.onecoder/policy.toml` < `$ONECODER_POLICY`. A pip-installed copy has no bundled `policy.toml`, so it uses the built-in defaults.
 
-```bash
-# Run the CLI using the local environment
-uv run onecoder <command>
+`[closure]` (optional) adds task-directory rules checked by `finish`: `required_files`, `banned_files`, `min_retro_bytes` (ported from the legacy sprint PolicyEngine).
 
-# Example: Initialize a sprint
-uv run onecoder sprint init my-feature
-```
-
-## 🛠 Core Workflows
-
-| Action | Command |
-| :--- | :--- |
-| **Onboarding** | `onecoder guide` |
-| **Start Sprint** | `onecoder sprint init <name>` |
-| **Preflight Check** | `onecoder sprint preflight` |
-| **Governed Commit** | `onecoder sprint commit -m "..." --spec-id SPEC-123` |
-| **Close Sprint** | `onecoder sprint close <name>` |
-
-## 🛡 Governance & Traceability
-OneCoder enforces high-quality engineering standards through automated checks:
-- **Atomic Traceability**: Every commit is linked to a Sprint-Id and Spec-Id.
-- **Preflight Enforcement**: Validates task breakdowns, LOC limits, and documentation before progress.
-- **Local-First**: All metadata is stored in `.sprint/` and `.issues/` within your repository.
-
-## 🧑‍💻 Contributing
-1. Clone the repo
-2. Install dependencies: `uv sync`
-3. Run tests: `uv run pytest`
+## History
+v0.0.9 was a sprint-management CLI wrapper. It was retired in favour of this design (task identity = branch, gates = hooks, review = fresh-context verdict). The old code is preserved on the `legacy` branch.

@@ -1,0 +1,18 @@
+# onecoder default policy. Project overrides go in <project>/.onecoder/policy.toml (that file is itself write-protected from agents).
+[modes]
+default = "auto"            # auto | human-driver | yolo
+allow_yolo_on_host = false  # yolo outside a sandbox is downgraded to human-driver unless true
+
+[isolation]
+default = "auto"            # auto | none | branch | worktree  (worktree is optional, never required)
+
+[gate]
+max_added_lines = 800
+human_merges = true         # `gh pr merge` is a hard block: the human merges
+
+[supply_chain]
+scanner_cmd = ""            # e.g. "osv-scanner scan source -r ." -- set to your installed scanner; not guessed
+on_missing_scanner = "warn" # warn | fail | ignore
+
+[review]
+require_verdict = true      # `onecoder finish` fails without a fresh, complete, typed review verdict
