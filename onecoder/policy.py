@@ -34,6 +34,7 @@ DEFAULTS = {
         "endpoint": "https://apps.lanig.workers.dev",
         "auto_pulse_on_task": False,
         "auto_check_conflicts": False,
+        "csv_dir": ".onecoder/track",
     },
 }
 

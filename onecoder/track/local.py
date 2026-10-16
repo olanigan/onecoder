@@ -1,8 +1,8 @@
-"""LocalTrackStore: Zero-dependency SQLite-backed tracking engine."""
+"""LocalTrackStore: Zero-dependency CSV-backed tracking engine."""
 
+import csv
 import json
 import os
-import sqlite3
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -21,214 +21,164 @@ def _ensure_dir(p: Path) -> Path:
 
 
 class LocalTrackStore:
-    def __init__(self, db_path: Optional[Path] = None, root: Optional[Path] = None):
+    PROJECT_FIELDS = ["id", "name", "category", "status", "tags", "repo_url", "path", "created_at", "updated_at"]
+    SPRINT_FIELDS = ["id", "project", "name", "status", "starts_at", "ends_at", "created_at", "updated_at"]
+    ISSUE_FIELDS = ["id", "project", "sprint", "title", "status", "labels", "created_at", "updated_at"]
+    WORKSTATION_FIELDS = ["workstation_id", "hostname", "local_hostname", "os_type", "status", "last_active_at", "created_at"]
+    EVENT_FIELDS = ["id", "workstation", "project", "event_type", "summary", "git_branch", "git_commit", "dirty_files_count", "dirty_files", "metadata", "created_at"]
+    PROGRESS_FIELDS = ["id", "project", "issue", "sprint", "note", "workstation", "git_branch", "git_commit", "created_at"]
+
+    def __init__(self, track_dir: Optional[Path] = None, root: Optional[Path] = None, policy: Optional[dict] = None):
         self.root = root or Path.cwd()
-        if db_path:
-            self.db_path = Path(db_path)
+        if track_dir:
+            self.track_dir = Path(track_dir)
         else:
-            self.db_path = Path.home() / ".onecoder" / "track.db"
-        _ensure_dir(self.db_path.parent)
-        self._init_db()
+            cfg_dir = (policy or {}).get("track", {}).get("csv_dir") if isinstance(policy, dict) else None
+            if cfg_dir:
+                self.track_dir = (self.root / cfg_dir).resolve()
+            else:
+                self.track_dir = (self.root / ".onecoder" / "track").resolve()
+        _ensure_dir(self.track_dir)
+        self._init_csvs()
 
-    def _get_conn(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(str(self.db_path))
-        conn.row_factory = sqlite3.Row
-        return conn
+    def _file(self, name: str) -> Path:
+        return self.track_dir / f"{name}.csv"
 
-    def _init_db(self):
-        with self._get_conn() as conn:
-            conn.executescript("""
-                CREATE TABLE IF NOT EXISTS projects (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    category TEXT,
-                    status TEXT DEFAULT 'active',
-                    tags TEXT,
-                    repo_url TEXT,
-                    created_at TEXT,
-                    updated_at TEXT
-                );
+    def _read_rows(self, name: str, fields: List[str]) -> List[Dict[str, Any]]:
+        path = self._file(name)
+        if not path.exists():
+            return []
+        with open(path, "r", encoding="utf-8", newline="") as f:
+            reader = csv.DictReader(f)
+            return [dict(row) for row in reader]
 
-                CREATE TABLE IF NOT EXISTS project_paths (
-                    project_id TEXT,
-                    workstation TEXT,
-                    path TEXT,
-                    repo_url TEXT,
-                    updated_at TEXT,
-                    PRIMARY KEY (project_id, workstation)
-                );
+    def _write_rows(self, name: str, fields: List[str], rows: List[Dict[str, Any]]):
+        path = self._file(name)
+        tmp = path.with_suffix(".tmp")
+        with open(tmp, "w", encoding="utf-8", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=fields)
+            writer.writeheader()
+            for r in rows:
+                clean = {k: r.get(k, "") for k in fields}
+                writer.writerow(clean)
+        tmp.replace(path)
 
-                CREATE TABLE IF NOT EXISTS sprints (
-                    id TEXT PRIMARY KEY,
-                    project TEXT,
-                    name TEXT,
-                    status TEXT DEFAULT 'planned',
-                    starts_at TEXT,
-                    ends_at TEXT,
-                    created_at TEXT,
-                    updated_at TEXT
-                );
+    def _append_row(self, name: str, fields: List[str], row: Dict[str, Any]):
+        path = self._file(name)
+        file_exists = path.exists() and path.stat().st_size > 0
+        with open(path, "a", encoding="utf-8", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=fields)
+            if not file_exists:
+                writer.writeheader()
+            clean = {k: row.get(k, "") for k in fields}
+            writer.writerow(clean)
 
-                CREATE TABLE IF NOT EXISTS issues (
-                    id TEXT PRIMARY KEY,
-                    project TEXT,
-                    sprint TEXT,
-                    title TEXT,
-                    status TEXT DEFAULT 'open',
-                    labels TEXT,
-                    created_at TEXT,
-                    updated_at TEXT
-                );
-
-                CREATE TABLE IF NOT EXISTS workstations (
-                    workstation_id TEXT PRIMARY KEY,
-                    hostname TEXT,
-                    local_hostname TEXT,
-                    os_type TEXT,
-                    status TEXT DEFAULT 'active',
-                    last_active_at TEXT,
-                    created_at TEXT
-                );
-
-                CREATE TABLE IF NOT EXISTS events (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    workstation TEXT,
-                    project TEXT,
-                    event_type TEXT DEFAULT 'pulse',
-                    summary TEXT,
-                    git_branch TEXT,
-                    git_commit TEXT,
-                    dirty_files_count INTEGER DEFAULT 0,
-                    dirty_files TEXT,
-                    metadata TEXT,
-                    created_at TEXT
-                );
-
-                CREATE TABLE IF NOT EXISTS progress (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    project TEXT,
-                    issue TEXT,
-                    sprint TEXT,
-                    note TEXT,
-                    workstation TEXT,
-                    git_branch TEXT,
-                    git_commit TEXT,
-                    created_at TEXT
-                );
-            """)
+    def _init_csvs(self):
+        for name, fields in [
+            ("projects", self.PROJECT_FIELDS),
+            ("sprints", self.SPRINT_FIELDS),
+            ("issues", self.ISSUE_FIELDS),
+            ("workstations", self.WORKSTATION_FIELDS),
+            ("events", self.EVENT_FIELDS),
+            ("progress", self.PROGRESS_FIELDS),
+        ]:
+            p = self._file(name)
+            if not p.exists():
+                with open(p, "w", encoding="utf-8", newline="") as f:
+                    writer = csv.DictWriter(f, fieldnames=fields)
+                    writer.writeheader()
 
     # ------------------ Projects ------------------
 
     def list_projects(self, category: Optional[str] = None, status: Optional[str] = None, tag: Optional[str] = None) -> Dict[str, Any]:
-        ws = get_workstation_id()
-        query = "SELECT * FROM projects WHERE 1=1"
-        params: List[Any] = []
-        if category:
-            query += " AND category = ?"
-            params.append(category)
-        if status:
-            query += " AND status = ?"
-            params.append(status)
-        query += " ORDER BY id ASC"
-
-        with self._get_conn() as conn:
-            rows = conn.execute(query, params).fetchall()
-            projects = []
-            for r in rows:
-                tags = json.loads(r["tags"]) if r["tags"] else []
-                if tag and tag not in tags:
-                    continue
-                # Get mapped path for this workstation
-                prow = conn.execute("SELECT path, repo_url FROM project_paths WHERE project_id = ? AND workstation = ?", (r["id"], ws)).fetchone()
-                p = dict(r)
-                p["tags"] = tags
-                p["path"] = prow["path"] if prow else None
-                if prow and prow["repo_url"]:
-                    p["repo_url"] = prow["repo_url"]
-                projects.append(p)
-            return {"projects": projects}
+        rows = self._read_rows("projects", self.PROJECT_FIELDS)
+        projects = []
+        for r in rows:
+            if category and r.get("category") != category:
+                continue
+            if status and r.get("status") != status:
+                continue
+            tags = []
+            if r.get("tags"):
+                try:
+                    tags = json.loads(r["tags"])
+                except Exception:
+                    tags = [t.strip() for t in r["tags"].split(",") if t.strip()]
+            if tag and tag not in tags:
+                continue
+            item = dict(r)
+            item["tags"] = tags
+            projects.append(item)
+        projects.sort(key=lambda x: x.get("id", ""))
+        return {"projects": projects}
 
     def update_project(self, id: str, name: Optional[str] = None, category: Optional[str] = None,
                        status: Optional[str] = None, tags: Optional[Any] = None, repo_url: Optional[str] = None,
                        path: Optional[str] = None, workstation: Optional[str] = None) -> Dict[str, Any]:
-        ws = workstation or get_workstation_id()
         now = _now_iso()
-        with self._get_conn() as conn:
-            cur = conn.execute("SELECT * FROM projects WHERE id = ?", (id,)).fetchone()
-            if cur:
-                tags_str = json.dumps(tags) if tags is not None else cur["tags"]
-                conn.execute("""
-                    UPDATE projects SET
-                        name = COALESCE(?, name),
-                        category = COALESCE(?, category),
-                        status = COALESCE(?, status),
-                        tags = ?,
-                        repo_url = COALESCE(?, repo_url),
-                        updated_at = ?
-                    WHERE id = ?
-                """, (name, category, status, tags_str, repo_url, now, id))
-            else:
-                tags_str = json.dumps(tags) if tags is not None else json.dumps([])
-                conn.execute("""
-                    INSERT INTO projects (id, name, category, status, tags, repo_url, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """, (id, name or id, category or "infrastructure", status or "active", tags_str, repo_url or "", now, now))
+        rows = self._read_rows("projects", self.PROJECT_FIELDS)
+        found = False
+        updated_item: Dict[str, Any] = {}
 
-            if path is not None:
-                conn.execute("""
-                    INSERT INTO project_paths (project_id, workstation, path, repo_url, updated_at)
-                    VALUES (?, ?, ?, ?, ?)
-                    ON CONFLICT(project_id, workstation) DO UPDATE SET
-                        path = excluded.path,
-                        repo_url = COALESCE(excluded.repo_url, project_paths.repo_url),
-                        updated_at = excluded.updated_at
-                """, (id, ws, str(path), repo_url or "", now))
+        for r in rows:
+            if r["id"] == id:
+                found = True
+                if name is not None: r["name"] = name
+                if category is not None: r["category"] = category
+                if status is not None: r["status"] = status
+                if tags is not None:
+                    r["tags"] = json.dumps(tags) if isinstance(tags, (list, dict)) else str(tags)
+                if repo_url is not None: r["repo_url"] = repo_url
+                if path is not None: r["path"] = str(path)
+                r["updated_at"] = now
+                updated_item = dict(r)
+                break
 
-            updated = conn.execute("SELECT * FROM projects WHERE id = ?", (id,)).fetchone()
-            res = dict(updated)
-            res["tags"] = json.loads(res["tags"]) if res["tags"] else []
-            return res
+        if not found:
+            tags_str = json.dumps(tags) if isinstance(tags, (list, dict)) else (str(tags) if tags is not None else "[]")
+            new_proj = {
+                "id": id,
+                "name": name or id,
+                "category": category or "infrastructure",
+                "status": status or "active",
+                "tags": tags_str,
+                "repo_url": repo_url or "",
+                "path": str(path) if path is not None else "",
+                "created_at": now,
+                "updated_at": now,
+            }
+            rows.append(new_proj)
+            updated_item = new_proj
+
+        self._write_rows("projects", self.PROJECT_FIELDS, rows)
+        res = dict(updated_item)
+        if res.get("tags"):
+            try: res["tags"] = json.loads(res["tags"])
+            except Exception: res["tags"] = []
+        else:
+            res["tags"] = []
+        return res
 
     def register_project_path(self, project: str, path: Optional[str] = None, repo_url: Optional[str] = None,
                               workstation: Optional[str] = None) -> Dict[str, Any]:
         ws = workstation or get_workstation_id()
         loc = Path(path or self.root).resolve()
-        now = _now_iso()
-        with self._get_conn() as conn:
-            # Ensure project exists
-            cur = conn.execute("SELECT * FROM projects WHERE id = ?", (project,)).fetchone()
-            if not cur:
-                conn.execute("""
-                    INSERT INTO projects (id, name, category, status, tags, repo_url, created_at, updated_at)
-                    VALUES (?, ?, 'infrastructure', 'active', '[]', ?, ?, ?)
-                """, (project, project, repo_url or "", now, now))
-            elif repo_url:
-                conn.execute("UPDATE projects SET repo_url = ?, updated_at = ? WHERE id = ?", (repo_url, now, project))
-
-            conn.execute("""
-                INSERT INTO project_paths (project_id, workstation, path, repo_url, updated_at)
-                VALUES (?, ?, ?, ?, ?)
-                ON CONFLICT(project_id, workstation) DO UPDATE SET
-                    path = excluded.path,
-                    repo_url = COALESCE(excluded.repo_url, project_paths.repo_url),
-                    updated_at = excluded.updated_at
-            """, (project, ws, str(loc), repo_url or "", now))
-
-        return {"registered": True, "project": project, "workstation": ws, "path": str(loc), "repo_url": repo_url}
+        res = self.update_project(id=project, path=str(loc), repo_url=repo_url, workstation=ws)
+        return {"registered": True, "project": project, "workstation": ws, "path": str(loc), "repo_url": repo_url or res.get("repo_url")}
 
     def get_project_location(self, project: str, workstation: Optional[str] = None) -> Dict[str, Any]:
         ws = workstation or get_workstation_id()
-        with self._get_conn() as conn:
-            proj = conn.execute("SELECT * FROM projects WHERE id = ?", (project,)).fetchone()
-            paths = conn.execute("SELECT workstation, path, repo_url FROM project_paths WHERE project_id = ?", (project,)).fetchall()
-            ws_map = {r["workstation"]: r["path"] for r in paths}
-            local_path = ws_map.get(ws)
-            return {
-                "project": project,
-                "repo_url": proj["repo_url"] if proj else None,
-                "local_path": local_path,
-                "workstation_paths": ws_map,
-            }
+        rows = self._read_rows("projects", self.PROJECT_FIELDS)
+        match = next((r for r in rows if r["id"] == project), None)
+        local_path = match.get("path") if match else None
+        repo_url = match.get("repo_url") if match else None
+        ws_paths = {ws: local_path} if local_path else {}
+        return {
+            "project": project,
+            "repo_url": repo_url,
+            "local_path": local_path,
+            "workstation_paths": ws_paths,
+        }
 
     # ------------------ Workstations ------------------
 
@@ -236,77 +186,81 @@ class LocalTrackStore:
         ws = workstation_id or get_workstation_id()
         now = _now_iso()
         import platform
-        with self._get_conn() as conn:
-            conn.execute("""
-                INSERT INTO workstations (workstation_id, hostname, local_hostname, os_type, status, last_active_at, created_at)
-                VALUES (?, ?, ?, ?, 'active', ?, ?)
-                ON CONFLICT(workstation_id) DO UPDATE SET
-                    last_active_at = excluded.last_active_at,
-                    status = 'active'
-            """, (ws, os.environ.get("HOSTNAME", ws), ws, platform.system(), now, now))
 
-            # Scan root_dir for project paths
-            scanned = []
-            target_root = Path(root_dir or self.root).resolve()
-            if target_root.exists() and target_root.is_dir():
-                projects = conn.execute("SELECT id, name FROM projects").fetchall()
-                for p in projects:
-                    pid, pname = p["id"], p["name"]
-                    candidates = [
-                        target_root / pname,
-                        target_root / pid,
-                        target_root / "apps" / pname,
-                        target_root / "tools" / pname,
-                    ]
-                    for cand in candidates:
-                        if cand.exists() and cand.is_dir():
-                            repo_url = None
-                            git_config = cand / ".git" / "config"
-                            if git_config.exists():
-                                try:
-                                    txt = git_config.read_text()
-                                    for line in txt.splitlines():
-                                        if "url =" in line:
-                                            repo_url = line.split("=", 1)[1].strip()
-                                            break
-                                except Exception:
-                                    pass
-                            conn.execute("""
-                                INSERT INTO project_paths (project_id, workstation, path, repo_url, updated_at)
-                                VALUES (?, ?, ?, ?, ?)
-                                ON CONFLICT(project_id, workstation) DO UPDATE SET
-                                    path = excluded.path,
-                                    repo_url = COALESCE(excluded.repo_url, project_paths.repo_url),
-                                    updated_at = excluded.updated_at
-                            """, (pid, ws, str(cand), repo_url or "", now))
-                            scanned.append({"project": pid, "path": str(cand), "repo_url": repo_url})
-                            break
+        rows = self._read_rows("workstations", self.WORKSTATION_FIELDS)
+        found = False
+        ws_row = {}
+        for r in rows:
+            if r["workstation_id"] == ws:
+                found = True
+                r["last_active_at"] = now
+                r["status"] = "active"
+                ws_row = dict(r)
+                break
 
-            ws_row = conn.execute("SELECT * FROM workstations WHERE workstation_id = ?", (ws,)).fetchone()
-            return {"workstation": dict(ws_row), "scanned_paths": scanned}
+        if not found:
+            ws_row = {
+                "workstation_id": ws,
+                "hostname": os.environ.get("HOSTNAME", ws),
+                "local_hostname": ws,
+                "os_type": platform.system(),
+                "status": "active",
+                "last_active_at": now,
+                "created_at": now,
+            }
+            rows.append(ws_row)
+
+        self._write_rows("workstations", self.WORKSTATION_FIELDS, rows)
+
+        # Scan root_dir and update project paths
+        scanned = []
+        target_root = Path(root_dir or self.root).resolve()
+        if target_root.exists() and target_root.is_dir():
+            projs = self._read_rows("projects", self.PROJECT_FIELDS)
+            for p in projs:
+                pid, pname = p["id"], p.get("name") or p["id"]
+                candidates = [
+                    target_root / pname,
+                    target_root / pid,
+                    target_root / "apps" / pname,
+                    target_root / "tools" / pname,
+                ]
+                for cand in candidates:
+                    if cand.exists() and cand.is_dir():
+                        repo_url = None
+                        git_cfg = cand / ".git" / "config"
+                        if git_cfg.exists():
+                            try:
+                                for line in git_cfg.read_text().splitlines():
+                                    if "url =" in line:
+                                        repo_url = line.split("=", 1)[1].strip()
+                                        break
+                            except Exception:
+                                pass
+                        self.update_project(pid, path=str(cand), repo_url=repo_url)
+                        scanned.append({"project": pid, "path": str(cand), "repo_url": repo_url})
+                        break
+
+        return {"workstation": ws_row, "scanned_paths": scanned}
 
     def list_workstations(self) -> Dict[str, Any]:
-        with self._get_conn() as conn:
-            rows = conn.execute("SELECT * FROM workstations ORDER BY last_active_at DESC").fetchall()
-            return {"workstations": [dict(r) for r in rows]}
+        rows = self._read_rows("workstations", self.WORKSTATION_FIELDS)
+        rows.sort(key=lambda x: x.get("last_active_at", ""), reverse=True)
+        return {"workstations": rows}
 
     def validate_workstations(self, workstation: Optional[str] = None) -> Dict[str, Any]:
         ws = workstation or get_workstation_id()
-        with self._get_conn() as conn:
-            query = "SELECT * FROM workstations WHERE 1=1"
-            params = []
-            if workstation:
-                query += " AND workstation_id = ?"
-                params.append(workstation)
-            rows = conn.execute(query, params).fetchall()
-            validated = []
-            for r in rows:
-                item = dict(r)
-                paths = conn.execute("SELECT project_id, path FROM project_paths WHERE workstation = ?", (r["workstation_id"],)).fetchall()
-                item["registered_projects_count"] = len(paths)
-                item["is_current"] = (r["workstation_id"] == ws)
-                validated.append(item)
-            return {"workstations": validated}
+        rows = self._read_rows("workstations", self.WORKSTATION_FIELDS)
+        projects = self._read_rows("projects", self.PROJECT_FIELDS)
+        validated = []
+        for r in rows:
+            if workstation and r["workstation_id"] != workstation:
+                continue
+            item = dict(r)
+            item["registered_projects_count"] = sum(1 for p in projects if p.get("path"))
+            item["is_current"] = (r["workstation_id"] == ws)
+            validated.append(item)
+        return {"workstations": validated}
 
     # ------------------ Sprints ------------------
 
@@ -315,42 +269,43 @@ class LocalTrackStore:
                       id: Optional[str] = None) -> Dict[str, Any]:
         sprint_id = id or f"sprint-{slugify(name)}-{int(time.time())}"
         now = _now_iso()
-        with self._get_conn() as conn:
-            conn.execute("""
-                INSERT INTO sprints (id, project, name, status, starts_at, ends_at, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (sprint_id, project, name, status, starts_at or now, ends_at or "", now, now))
-            row = conn.execute("SELECT * FROM sprints WHERE id = ?", (sprint_id,)).fetchone()
-            return dict(row)
+        sprint = {
+            "id": sprint_id,
+            "project": project,
+            "name": name,
+            "status": status or "planned",
+            "starts_at": starts_at or now,
+            "ends_at": ends_at or "",
+            "created_at": now,
+            "updated_at": now,
+        }
+        self._append_row("sprints", self.SPRINT_FIELDS, sprint)
+        return sprint
 
     def update_sprint(self, id: str, name: Optional[str] = None, status: Optional[str] = None,
                       starts_at: Optional[str] = None, ends_at: Optional[str] = None) -> Dict[str, Any]:
-        now = _now_iso()
-        with self._get_conn() as conn:
-            conn.execute("""
-                UPDATE sprints SET
-                    name = COALESCE(?, name),
-                    status = COALESCE(?, status),
-                    starts_at = COALESCE(?, starts_at),
-                    ends_at = COALESCE(?, ends_at),
-                    updated_at = ?
-                WHERE id = ?
-            """, (name, status, starts_at, ends_at, now, id))
-            row = conn.execute("SELECT * FROM sprints WHERE id = ?", (id,)).fetchone()
-            if not row:
-                raise ValueError(f"sprint {id} not found")
-            return dict(row)
+        rows = self._read_rows("sprints", self.SPRINT_FIELDS)
+        match = None
+        for r in rows:
+            if r["id"] == id:
+                if name is not None: r["name"] = name
+                if status is not None: r["status"] = status
+                if starts_at is not None: r["starts_at"] = starts_at
+                if ends_at is not None: r["ends_at"] = ends_at
+                r["updated_at"] = _now_iso()
+                match = dict(r)
+                break
+        if not match:
+            raise ValueError(f"sprint {id} not found")
+        self._write_rows("sprints", self.SPRINT_FIELDS, rows)
+        return match
 
     def list_sprints(self, project: Optional[str] = None) -> Dict[str, Any]:
-        with self._get_conn() as conn:
-            query = "SELECT * FROM sprints WHERE 1=1"
-            params = []
-            if project:
-                query += " AND project = ?"
-                params.append(project)
-            query += " ORDER BY created_at DESC"
-            rows = conn.execute(query, params).fetchall()
-            return {"sprints": [dict(r) for r in rows]}
+        rows = self._read_rows("sprints", self.SPRINT_FIELDS)
+        if project:
+            rows = [r for r in rows if r.get("project") == project]
+        rows.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+        return {"sprints": rows}
 
     # ------------------ Issues ------------------
 
@@ -359,60 +314,65 @@ class LocalTrackStore:
                      id: Optional[str] = None) -> Dict[str, Any]:
         now = _now_iso()
         issue_id = id or f"issue-{int(time.time()*1000) % 1000000}"
-        labels_json = json.dumps(labels or [])
-        with self._get_conn() as conn:
-            conn.execute("""
-                INSERT INTO issues (id, project, sprint, title, status, labels, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (issue_id, project, sprint or None, title, status, labels_json, now, now))
-            row = conn.execute("SELECT * FROM issues WHERE id = ?", (issue_id,)).fetchone()
-            res = dict(row)
-            res["labels"] = json.loads(res["labels"]) if res["labels"] else []
-            return res
+        labels_str = json.dumps(labels or [])
+        issue = {
+            "id": issue_id,
+            "project": project,
+            "sprint": sprint or "",
+            "title": title,
+            "status": status or "open",
+            "labels": labels_str,
+            "created_at": now,
+            "updated_at": now,
+        }
+        self._append_row("issues", self.ISSUE_FIELDS, issue)
+        res = dict(issue)
+        res["labels"] = labels or []
+        return res
 
     def update_issue(self, id: str, title: Optional[str] = None, sprint: Optional[str] = None,
                      status: Optional[str] = None, labels: Optional[List[str]] = None) -> Dict[str, Any]:
-        now = _now_iso()
-        with self._get_conn() as conn:
-            cur = conn.execute("SELECT * FROM issues WHERE id = ?", (id,)).fetchone()
-            if not cur:
-                raise ValueError(f"issue {id} not found")
-            labels_str = json.dumps(labels) if labels is not None else cur["labels"]
-            conn.execute("""
-                UPDATE issues SET
-                    title = COALESCE(?, title),
-                    sprint = COALESCE(?, sprint),
-                    status = COALESCE(?, status),
-                    labels = ?,
-                    updated_at = ?
-                WHERE id = ?
-            """, (title, sprint, status, labels_str, now, id))
-            row = conn.execute("SELECT * FROM issues WHERE id = ?", (id,)).fetchone()
-            res = dict(row)
-            res["labels"] = json.loads(res["labels"]) if res["labels"] else []
-            return res
+        rows = self._read_rows("issues", self.ISSUE_FIELDS)
+        match = None
+        for r in rows:
+            if r["id"] == id:
+                if title is not None: r["title"] = title
+                if sprint is not None: r["sprint"] = sprint
+                if status is not None: r["status"] = status
+                if labels is not None: r["labels"] = json.dumps(labels)
+                r["updated_at"] = _now_iso()
+                match = dict(r)
+                break
+        if not match:
+            raise ValueError(f"issue {id} not found")
+        self._write_rows("issues", self.ISSUE_FIELDS, rows)
+        res = dict(match)
+        if res.get("labels"):
+            try: res["labels"] = json.loads(res["labels"])
+            except Exception: res["labels"] = []
+        else:
+            res["labels"] = []
+        return res
 
     def list_issues(self, project: Optional[str] = None, sprint: Optional[str] = None, status: Optional[str] = None) -> Dict[str, Any]:
-        with self._get_conn() as conn:
-            query = "SELECT * FROM issues WHERE 1=1"
-            params = []
-            if project:
-                query += " AND project = ?"
-                params.append(project)
-            if sprint:
-                query += " AND sprint = ?"
-                params.append(sprint)
-            if status:
-                query += " AND status = ?"
-                params.append(status)
-            query += " ORDER BY created_at DESC"
-            rows = conn.execute(query, params).fetchall()
-            out = []
-            for r in rows:
-                item = dict(r)
-                item["labels"] = json.loads(item["labels"]) if item["labels"] else []
-                out.append(item)
-            return {"issues": out}
+        rows = self._read_rows("issues", self.ISSUE_FIELDS)
+        out = []
+        for r in rows:
+            if project and r.get("project") != project:
+                continue
+            if sprint and r.get("sprint") != sprint:
+                continue
+            if status and r.get("status") != status:
+                continue
+            item = dict(r)
+            if item.get("labels"):
+                try: item["labels"] = json.loads(item["labels"])
+                except Exception: item["labels"] = []
+            else:
+                item["labels"] = []
+            out.append(item)
+        out.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+        return {"issues": out}
 
     # ------------------ Events & Radar ------------------
 
@@ -428,76 +388,81 @@ class LocalTrackStore:
         files = dirty_files if dirty_files is not None else git_status["dirty_files"]
         count = len(files)
 
-        with self._get_conn() as conn:
-            conn.execute("""
-                INSERT INTO events (workstation, project, event_type, summary, git_branch, git_commit, dirty_files_count, dirty_files, metadata, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (ws, project or None, event_type, summary, git_info["branch"], git_info["commit"], count, json.dumps(files), json.dumps(metadata or {}), now))
+        existing_events = self._read_rows("events", self.EVENT_FIELDS)
+        next_id = max([int(r["id"]) for r in existing_events if r.get("id", "").isdigit()] or [0]) + 1
 
-            # Touch workstation
-            conn.execute("""
-                INSERT INTO workstations (workstation_id, hostname, local_hostname, os_type, status, last_active_at, created_at)
-                VALUES (?, ?, ?, 'Darwin', 'active', ?, ?)
-                ON CONFLICT(workstation_id) DO UPDATE SET
-                    last_active_at = excluded.last_active_at,
-                    status = 'active'
-            """, (ws, ws, ws, now, now))
+        ev = {
+            "id": str(next_id),
+            "workstation": ws,
+            "project": project or "",
+            "event_type": event_type or "pulse",
+            "summary": summary,
+            "git_branch": git_info["branch"] or "",
+            "git_commit": git_info["commit"] or "",
+            "dirty_files_count": str(count),
+            "dirty_files": json.dumps(files),
+            "metadata": json.dumps(metadata or {}),
+            "created_at": now,
+        }
+        self._append_row("events", self.EVENT_FIELDS, ev)
 
-            last_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-            row = conn.execute("SELECT * FROM events WHERE id = ?", (last_id,)).fetchone()
-            res = dict(row)
-            res["dirty_files"] = json.loads(res["dirty_files"]) if res["dirty_files"] else []
-            res["metadata"] = json.loads(res["metadata"]) if res["metadata"] else {}
-            return res
+        # Update workstation
+        self.onboard_workstation(workstation_id=ws)
+
+        res = dict(ev)
+        res["dirty_files"] = files
+        res["metadata"] = metadata or {}
+        res["dirty_files_count"] = count
+        return res
 
     def get_station_radar(self) -> Dict[str, Any]:
-        with self._get_conn() as conn:
-            ws_rows = conn.execute("SELECT * FROM workstations ORDER BY last_active_at DESC").fetchall()
-            workstations = []
-            now_ts = time.time()
-            for w in ws_rows:
-                item = dict(w)
-                last_active = item.get("last_active_at")
-                if last_active:
-                    try:
-                        # parse iso
-                        dt = datetime.fromisoformat(last_active)
-                        delta_sec = now_ts - dt.timestamp()
-                        if delta_sec < 1800:
-                            item["activity_status"] = "active"
-                        elif delta_sec < 86400:
-                            item["activity_status"] = "idle"
-                        else:
-                            item["activity_status"] = "offline"
-                    except Exception:
-                        item["activity_status"] = "unknown"
-                else:
+        ws_rows = self._read_rows("workstations", self.WORKSTATION_FIELDS)
+        events = self._read_rows("events", self.EVENT_FIELDS)
+        events.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+
+        now_ts = time.time()
+        workstations = []
+        for w in ws_rows:
+            item = dict(w)
+            last_active = item.get("last_active_at")
+            if last_active:
+                try:
+                    dt = datetime.fromisoformat(last_active)
+                    delta = now_ts - dt.timestamp()
+                    if delta < 1800: item["activity_status"] = "active"
+                    elif delta < 86400: item["activity_status"] = "idle"
+                    else: item["activity_status"] = "offline"
+                except Exception:
                     item["activity_status"] = "unknown"
+            else:
+                item["activity_status"] = "unknown"
 
-                # Latest event
-                last_ev = conn.execute("SELECT * FROM events WHERE workstation = ? ORDER BY created_at DESC LIMIT 1", (w["workstation_id"],)).fetchone()
-                if last_ev:
-                    ev_dict = dict(last_ev)
-                    ev_dict["dirty_files"] = json.loads(ev_dict["dirty_files"]) if ev_dict["dirty_files"] else []
-                    ev_dict["metadata"] = json.loads(ev_dict["metadata"]) if ev_dict["metadata"] else {}
-                    item["latest_event"] = ev_dict
-                else:
-                    item["latest_event"] = None
-                workstations.append(item)
+            latest = next((e for e in events if e.get("workstation") == w["workstation_id"]), None)
+            if latest:
+                ev_dict = dict(latest)
+                try: ev_dict["dirty_files"] = json.loads(ev_dict.get("dirty_files", "[]"))
+                except Exception: ev_dict["dirty_files"] = []
+                try: ev_dict["metadata"] = json.loads(ev_dict.get("metadata", "{}"))
+                except Exception: ev_dict["metadata"] = {}
+                item["latest_event"] = ev_dict
+            else:
+                item["latest_event"] = None
+            workstations.append(item)
 
-            # Check conflicts: any project touched by >1 workstation in last 2 hours
-            cutoff = datetime.fromtimestamp(now_ts - 7200, timezone.utc).isoformat()
-            recent_events = conn.execute("SELECT DISTINCT project, workstation FROM events WHERE project IS NOT NULL AND created_at >= ?", (cutoff,)).fetchall()
-            proj_stations: Dict[str, List[str]] = {}
-            for r in recent_events:
-                proj_stations.setdefault(r["project"], []).append(r["workstation"])
+        # Detect conflicts across stations on any project in last 2 hours
+        cutoff = datetime.fromtimestamp(now_ts - 7200, timezone.utc).isoformat()
+        proj_stations: Dict[str, List[str]] = {}
+        for e in events:
+            p = e.get("project")
+            if p and e.get("created_at", "") >= cutoff:
+                proj_stations.setdefault(p, []).append(e.get("workstation", ""))
 
-            conflicts = []
-            for p, stations in proj_stations.items():
-                if len(set(stations)) > 1:
-                    conflicts.append({"project_id": p, "workstations": stations, "reason": "multiple workstations active in last 2 hours"})
+        conflicts = []
+        for p, stations in proj_stations.items():
+            if len(set(stations)) > 1:
+                conflicts.append({"project_id": p, "workstations": list(set(stations)), "reason": "multiple workstations active in last 2 hours"})
 
-            return {"workstations": workstations, "conflicts": conflicts}
+        return {"workstations": workstations, "conflicts": conflicts}
 
     def check_station_conflicts(self, project: str) -> Dict[str, Any]:
         radar = self.get_station_radar()
@@ -525,35 +490,40 @@ class LocalTrackStore:
         rt = root or self.root
         git_info = get_git_info(rt)
         now = _now_iso()
-        with self._get_conn() as conn:
-            conn.execute("""
-                INSERT INTO progress (project, issue, sprint, note, workstation, git_branch, git_commit, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (project, issue or None, sprint or None, note, ws, git_info["branch"], git_info["commit"], now))
-            last_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-            row = conn.execute("SELECT * FROM progress WHERE id = ?", (last_id,)).fetchone()
-            return dict(row)
+
+        existing = self._read_rows("progress", self.PROGRESS_FIELDS)
+        next_id = max([int(r["id"]) for r in existing if r.get("id", "").isdigit()] or [0]) + 1
+
+        prog = {
+            "id": str(next_id),
+            "project": project,
+            "issue": issue or "",
+            "sprint": sprint or "",
+            "note": note,
+            "workstation": ws,
+            "git_branch": git_info["branch"] or "",
+            "git_commit": git_info["commit"] or "",
+            "created_at": now,
+        }
+        self._append_row("progress", self.PROGRESS_FIELDS, prog)
+        return prog
 
     def query_progress(self, project: Optional[str] = None, sprint: Optional[str] = None,
                        issue: Optional[str] = None, since: Optional[str] = None) -> Dict[str, Any]:
-        with self._get_conn() as conn:
-            query = "SELECT * FROM progress WHERE 1=1"
-            params = []
-            if project:
-                query += " AND project = ?"
-                params.append(project)
-            if sprint:
-                query += " AND sprint = ?"
-                params.append(sprint)
-            if issue:
-                query += " AND issue = ?"
-                params.append(issue)
-            if since:
-                query += " AND created_at >= ?"
-                params.append(since)
-            query += " ORDER BY created_at DESC"
-            rows = conn.execute(query, params).fetchall()
-            return {"progress": [dict(r) for r in rows]}
+        rows = self._read_rows("progress", self.PROGRESS_FIELDS)
+        out = []
+        for r in rows:
+            if project and r.get("project") != project:
+                continue
+            if sprint and r.get("sprint") != sprint:
+                continue
+            if issue and r.get("issue") != issue:
+                continue
+            if since and r.get("created_at", "") < since:
+                continue
+            out.append(r)
+        out.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+        return {"progress": out}
 
     def log_session(self, project: str, task: str, summary: str, sessions_dir: str = "sessions",
                     issue: Optional[str] = None, sprint: Optional[str] = None, root: Optional[Path] = None) -> Dict[str, Any]:
@@ -565,7 +535,7 @@ class LocalTrackStore:
         now = datetime.now()
         stamp = now.strftime("%Y%m%d-%H%M")
         sdir = (rt / sessions_dir).resolve()
-        _ensure_dir(sdir)
+        sdir.mkdir(parents=True, exist_ok=True)
 
         filename = f"{stamp}-{slugify(task)}.md"
         file_path = sdir / filename
@@ -588,7 +558,6 @@ state: {state_str}
 """
         file_path.write_text(content, encoding="utf-8")
 
-        # Record progress entry
         progress_note = f"[session] {task}\n\nfile: {file_path}\n\n{summary}"
         prog = self.log_progress(project, progress_note, sprint=sprint, issue=issue, root=rt)
         return {"session_file": str(file_path), "progress": prog}

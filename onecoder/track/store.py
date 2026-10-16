@@ -27,8 +27,8 @@ def get_track_store(root: Optional[Path] = None, backend: Optional[str] = None,
     if target_backend == "remote":
         return RemoteTrackClient(endpoint=endpoint, secret=secret, root=root)
     elif target_backend == "local":
-        return LocalTrackStore(root=root)
+        return LocalTrackStore(root=root, policy=policy)
     else:  # auto
         if secret:
             return RemoteTrackClient(endpoint=endpoint, secret=secret, root=root)
-        return LocalTrackStore(root=root)
+        return LocalTrackStore(root=root, policy=policy)

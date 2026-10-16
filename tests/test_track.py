@@ -42,11 +42,18 @@ class TestLocalTrackStore(unittest.TestCase):
     def setUp(self):
         self.td = tempfile.TemporaryDirectory()
         self.root = Path(self.td.name)
-        self.db_path = self.root / "track.db"
-        self.store = LocalTrackStore(db_path=self.db_path, root=self.root)
+        self.track_dir = self.root / "track"
+        self.store = LocalTrackStore(track_dir=self.track_dir, root=self.root)
 
     def tearDown(self):
         self.td.cleanup()
+
+    def test_csv_files_created(self):
+        self.assertTrue((self.track_dir / "projects.csv").exists())
+        self.assertTrue((self.track_dir / "sprints.csv").exists())
+        self.assertTrue((self.track_dir / "issues.csv").exists())
+        self.assertTrue((self.track_dir / "events.csv").exists())
+        self.assertTrue((self.track_dir / "progress.csv").exists())
 
     def test_project_crud(self):
         p = self.store.update_project("test-proj", name="Test Project", category="devtools", tags=["cli", "python"])

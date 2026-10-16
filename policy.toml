@@ -22,3 +22,4 @@ backend = "auto"            # auto | local | remote
 endpoint = "https://apps.lanig.workers.dev"
 auto_pulse_on_task = false  # emit pulse to track store on task new
 auto_check_conflicts = false # check cross-station conflicts on preflight
+csv_dir = ".onecoder/track" # local storage directory for CSV files
