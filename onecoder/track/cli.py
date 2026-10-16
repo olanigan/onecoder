@@ -68,13 +68,16 @@ def cmd_sprint(a):
         return 0
 
     elif action in ("update", "close"):
-        if not a.id:
+        target_id = a.id or getattr(a, "name", None)
+        if not target_id:
             print(f"onecoder sprint {action}: error: id is required", file=sys.stderr)
             return 2
-        status = "completed" if action == "close" else a.status
+        a.id = target_id
+        status = "completed" if action == "close" else getattr(a, "status", None)
+        sp_name = a.name if (getattr(a, "name", None) and a.name != a.id) else None
         sp = store.update_sprint(
             id=a.id,
-            name=getattr(a, "name", None),
+            name=sp_name,
             status=status,
             starts_at=getattr(a, "starts_at", None),
             ends_at=getattr(a, "ends_at", None)
@@ -132,14 +135,17 @@ def cmd_issue(a):
         return 0
 
     elif action in ("update", "close"):
-        if not a.id:
+        target_id = a.id or getattr(a, "title", None)
+        if not target_id:
             print(f"onecoder issue {action}: error: id is required", file=sys.stderr)
             return 2
+        a.id = target_id
         status = "closed" if action == "close" else getattr(a, "status", None)
+        iss_title = a.title if (getattr(a, "title", None) and a.title != a.id) else None
         labels = [l.strip() for l in a.labels.split(",")] if getattr(a, "labels", None) else None
         iss = store.update_issue(
             id=a.id,
-            title=getattr(a, "title", None),
+            title=iss_title,
             sprint=getattr(a, "sprint", None),
             status=status,
             labels=labels
