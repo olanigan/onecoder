@@ -30,3 +30,9 @@ You are running under **OneCoder**. This file is the always-loaded contract. It 
 2. Get a verdict from a **fresh-context** reviewer: skill `spec-review` (writes `.onecoder/tasks/<id>/review.json` pinned to the current HEAD).
 3. `onecoder finish` (preflight with warnings treated as failures). Fix, re-commit, re-review if it fails; a changed HEAD makes the old verdict stale.
 4. Hand off. Do not push the default branch, do not merge.
+
+## Tracking & Progress
+- **Check conflicts first:** If working across multiple machines or collaborative setups, run `onecoder conflicts` (or use tool `check_station_conflicts`).
+- **Emit checkpoints:** For long-running steps or handoffs, emit a pulse: `onecoder pulse "<summary>"` (or tool `emit_work_event`).
+- **Session logs:** At the conclusion of a milestone, write a session record: `onecoder session log "<task>" "<summary>"` (or tool `log_session`).
+- **MCP server:** Running `onecoder mcp` exposes all tracking and governance tools to agent runners over stdio JSON-RPC.

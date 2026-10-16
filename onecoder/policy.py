@@ -29,6 +29,12 @@ DEFAULTS = {
     },
     "review": {"require_verdict": True},
     "closure": {"required_files": [], "banned_files": [], "min_retro_bytes": 0},
+    "track": {
+        "backend": "auto",
+        "endpoint": "https://apps.lanig.workers.dev",
+        "auto_pulse_on_task": False,
+        "auto_check_conflicts": False,
+    },
 }
 
 
@@ -71,6 +77,12 @@ def validate(p):
             raise PolicyError(f"closure.{k} must be a list of strings")
     if not isinstance(c["min_retro_bytes"], int) or c["min_retro_bytes"] < 0:
         raise PolicyError("closure.min_retro_bytes must be a non-negative integer")
+    if "track" in p:
+        t = p["track"]
+        if t.get("backend") not in ("auto", "local", "remote"):
+            raise PolicyError("track.backend must be auto|local|remote")
+        if not isinstance(t.get("endpoint", ""), str):
+            raise PolicyError("track.endpoint must be a string")
     return p
 
 

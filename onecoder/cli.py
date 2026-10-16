@@ -1,4 +1,4 @@
-"""onecoder: harness-agnostic governance CLI. Run `onecoder doctor` first."""
+"""onecoder CLI entry point. Harness-agnostic governance, quality gates, and tracking."""
 
 import argparse
 import json
@@ -9,6 +9,8 @@ from pathlib import Path
 from . import adapt, detect, gate, preflight, task as tasklib, policy as pol
 from . import gitutil as g
 from .log import event
+from .track import cli as track_cli
+from .track.store import get_track_store
 
 
 def _root(cwd=None):
@@ -70,6 +72,41 @@ def cmd_task(a):
     except tasklib.TaskError as e:
         print(f"onecoder: {e}", file=sys.stderr)
         return 2
+
+    # Optional issue enrichment
+    if getattr(a, "issue", None):
+        try:
+            store = get_track_store(root=root)
+            issues_data = store.list_issues(project=root.name)
+            issue = next((i for i in issues_data.get("issues", []) if i["id"] == a.issue), None)
+            if issue:
+                brief_path = tasklib.task_path(root, a.id) / "brief.md"
+                content = f"""---
+id: {a.id}
+issue: {issue['id']}
+kind: ship
+---
+# {a.id}: {issue['title']}
+
+## Goal
+{issue['title']}
+
+## Acceptance criteria
+<!-- One line each, ids AC-1.. The reviewer must give a verdict with evidence for every one. -->
+- [ ] AC-1: <observable, checkable statement>
+"""
+                brief_path.write_text(content)
+        except Exception:
+            pass
+
+    # Optional auto-pulse
+    if policy.get("track", {}).get("auto_pulse_on_task"):
+        try:
+            store = get_track_store(root=root)
+            store.emit_work_event(f"Started task {a.id}", project=root.name, event_type="session_start", root=root)
+        except Exception:
+            pass
+
     event(root, "task.new", task=a.id, mode=mode, isolation=iso)
     print(f"task {st['id']}: mode={mode} isolation={iso} branch={st['branch']}")
     print(f"workdir : {st['workdir']}")
@@ -79,8 +116,20 @@ def cmd_task(a):
 
 def cmd_preflight(a):
     root = _root()
+    policy = pol.load(root)
+
+    # Optional conflict preflight check
+    if policy.get("track", {}).get("auto_check_conflicts"):
+        try:
+            store = get_track_store(root=root)
+            c = store.check_station_conflicts(project=root.name)
+            if c.get("conflict_detected"):
+                print(f"onecoder preflight: WARN cross-station conflict detected on {root.name}: {c.get('details')}", file=sys.stderr)
+        except Exception:
+            pass
+
     try:
-        rep = preflight.run(root, pol.load(root), staged=a.staged, base=a.base, task=a.task)
+        rep = preflight.run(root, policy, staged=a.staged, base=a.base, task=a.task)
     except Exception as e:  # fail closed
         print(f"onecoder preflight: ERROR {e}", file=sys.stderr)
         return 1
@@ -98,6 +147,14 @@ def cmd_finish(a):
     a.staged, a.base, a.strict, a.json = False, None, True, False
     rc = cmd_preflight(a)
     if rc == 0:
+        root = _root()
+        policy = pol.load(root)
+        if policy.get("track", {}).get("auto_pulse_on_task"):
+            try:
+                store = get_track_store(root=root)
+                store.emit_work_event(f"Completed task {a.task or tasklib.current(root) or 'task'}", project=root.name, event_type="checkpoint", root=root)
+            except Exception:
+                pass
         print("handoff: ready for human review. onecoder never pushes or merges; you merge.")
     return rc
 
@@ -173,17 +230,29 @@ def cmd_doctor(a):
         print("scanner  : none configured (supply_chain.scanner_cmd); manifest changes will report on_missing_scanner="
               + p["supply_chain"]["on_missing_scanner"])
     print(f"recommend: mode={prof['recommend']['mode']} isolation={prof['recommend']['isolation']}")
+
+    # Doctor check for tracking store
+    try:
+        store = get_track_store(root=root)
+        backend_name = "remote" if hasattr(store, "secret") and store.secret else "local"
+        print(f"track    : ok (backend={backend_name})")
+    except Exception as e:
+        print(f"track    : warning ({e})")
+
     return 0 if ok else 1
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="onecoder")
     sub = ap.add_subparsers(dest="cmd", required=True)
+
+    # Core governance commands
     s = sub.add_parser("detect"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_detect)
     s = sub.add_parser("mode"); s.set_defaults(fn=cmd_mode)
     s = sub.add_parser("task")
     s.add_argument("action", choices=["new", "list", "current"]); s.add_argument("id", nargs="?")
     s.add_argument("--mode", choices=["human-driver", "yolo"]); s.add_argument("--isolation", choices=["none", "branch", "worktree"])
+    s.add_argument("--issue", help="Associate task with an issue id")
     s.set_defaults(fn=cmd_task)
     s = sub.add_parser("preflight")
     s.add_argument("--staged", action="store_true"); s.add_argument("--base"); s.add_argument("--task")
@@ -194,6 +263,107 @@ def main(argv=None):
     s = sub.add_parser("adapt"); s.add_argument("target", choices=["claude", "git"])
     s.add_argument("--write", action="store_true"); s.add_argument("--shared", action="store_true"); s.set_defaults(fn=cmd_adapt)
     s = sub.add_parser("doctor"); s.set_defaults(fn=cmd_doctor)
+
+    # Tracking & Agile commands
+    def _add_mode_flags(parser):
+        parser.add_argument("--local", action="store_true", help="Force local SQLite storage")
+        parser.add_argument("--remote", action="store_true", help="Force Cloudflare remote storage")
+        parser.add_argument("--json", action="store_true", help="Output JSON")
+
+    # Sprint
+    s = sub.add_parser("sprint", help="Sprint lifecycle management")
+    s.add_argument("action", nargs="?", default="list", choices=["list", "new", "update", "close"])
+    s.add_argument("name", nargs="?", help="Sprint name for 'new'")
+    s.add_argument("--id", help="Sprint ID")
+    s.add_argument("--project", "-p", help="Project ID")
+    s.add_argument("--status", choices=["planned", "active", "completed"])
+    s.add_argument("--starts-at", help="Start date (ISO)")
+    s.add_argument("--ends-at", help="End date (ISO)")
+    _add_mode_flags(s)
+    s.set_defaults(fn=track_cli.cmd_sprint)
+
+    # Issue
+    s = sub.add_parser("issue", help="Issue and story management")
+    s.add_argument("action", nargs="?", default="list", choices=["list", "new", "update", "close"])
+    s.add_argument("title", nargs="?", help="Issue title for 'new'")
+    s.add_argument("--id", help="Issue ID")
+    s.add_argument("--project", "-p", help="Project ID")
+    s.add_argument("--sprint", "-s", help="Sprint ID")
+    s.add_argument("--status", choices=["open", "in_progress", "closed"])
+    s.add_argument("--labels", "-l", help="Comma-separated labels")
+    _add_mode_flags(s)
+    s.set_defaults(fn=track_cli.cmd_issue)
+
+    # Project
+    s = sub.add_parser("project", help="Tracked project catalog")
+    s.add_argument("action", nargs="?", default="list", choices=["list", "register", "update", "locate"])
+    s.add_argument("project", nargs="?", help="Project ID")
+    s.add_argument("--id", help="Project ID for update")
+    s.add_argument("--name", help="Display name")
+    s.add_argument("--category", choices=["monetized_app", "productized_template", "working_prototype", "experiment", "infrastructure"])
+    s.add_argument("--status", choices=["active", "archived", "paused"])
+    s.add_argument("--tags", help="Comma-separated tags")
+    s.add_argument("--tag", help="Filter by tag")
+    s.add_argument("--path", help="Local filesystem path")
+    s.add_argument("--repo-url", help="GitHub repository URL")
+    _add_mode_flags(s)
+    s.set_defaults(fn=track_cli.cmd_project)
+
+    # Station
+    s = sub.add_parser("station", help="Cross-workstation management")
+    s.add_argument("action", nargs="?", default="list", choices=["list", "onboard", "validate"])
+    s.add_argument("--root-dir", help="Root directory to scan for onboarding")
+    s.add_argument("--station-id", help="Workstation ID")
+    s.add_argument("--station", help="Target workstation for validate")
+    _add_mode_flags(s)
+    s.set_defaults(fn=track_cli.cmd_station)
+
+    # Radar & Conflicts
+    s = sub.add_parser("radar", help="Cross-workstation activity radar")
+    _add_mode_flags(s)
+    s.set_defaults(fn=track_cli.cmd_radar)
+
+    s = sub.add_parser("conflicts", help="Check for cross-station conflicts on project")
+    s.add_argument("--project", "-p", help="Project ID")
+    _add_mode_flags(s)
+    s.set_defaults(fn=track_cli.cmd_conflicts)
+
+    # Pulse
+    s = sub.add_parser("pulse", help="Broadcast real-time work event")
+    s.add_argument("summary", help="Event description")
+    s.add_argument("--project", "-p", help="Project ID")
+    s.add_argument("--type", "-t", choices=["pulse", "checkpoint", "session_start", "handoff", "error"], default="pulse")
+    _add_mode_flags(s)
+    s.set_defaults(fn=track_cli.cmd_pulse)
+
+    # Progress
+    s = sub.add_parser("progress", help="Progress notes audit trail")
+    s.add_argument("action", nargs="?", default="query", choices=["query", "log", "list"])
+    s.add_argument("note", nargs="?", help="Progress note content")
+    s.add_argument("--project", "-p", help="Project ID")
+    s.add_argument("--sprint", "-s", help="Sprint ID")
+    s.add_argument("--issue", "-i", help="Issue ID")
+    s.add_argument("--since", help="ISO timestamp filter")
+    _add_mode_flags(s)
+    s.set_defaults(fn=track_cli.cmd_progress)
+
+    # Session
+    s = sub.add_parser("session", help="Session markdown log & progress entry")
+    s.add_argument("action", choices=["log"])
+    s.add_argument("task", help="Short task title")
+    s.add_argument("summary", help="Full markdown body of session log")
+    s.add_argument("--project", "-p", help="Project ID")
+    s.add_argument("--sprint", "-s", help="Sprint ID")
+    s.add_argument("--issue", "-i", help="Issue ID")
+    s.add_argument("--dir", "-d", default="sessions", help="Directory to write session file")
+    _add_mode_flags(s)
+    s.set_defaults(fn=track_cli.cmd_session)
+
+    # MCP server command
+    s = sub.add_parser("mcp", help="Run MCP stdio server")
+    s.add_argument("--backend", choices=["auto", "local", "remote"], default="auto", help="Storage backend to use")
+    s.set_defaults(fn=track_cli.cmd_mcp)
+
     a = ap.parse_args(argv)
     if a.cmd == "task" and a.action == "new" and not a.id:
         ap.error("task new requires an id")
@@ -205,4 +375,3 @@ def main(argv=None):
     except ValueError as e:
         print(f"onecoder: {e}", file=sys.stderr)
         return 2
-
