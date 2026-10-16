@@ -16,3 +16,9 @@ on_missing_scanner = "warn" # warn | fail | ignore
 
 [review]
 require_verdict = true      # `onecoder finish` fails without a fresh, complete, typed review verdict
+
+[track]
+backend = "auto"            # auto | local | remote
+endpoint = "https://apps.lanig.workers.dev"
+auto_pulse_on_task = false  # emit pulse to track store on task new
+auto_check_conflicts = false # check cross-station conflicts on preflight
