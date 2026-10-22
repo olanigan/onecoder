@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OneCoder: work graph</title>
+<style>
+:root { --bg:#f7f6f3; --surface:#fff; --ink:#1d1d1f; --muted:#6b6b70; --line:#e2e0da; --accent:#2f6fde; --ok:#2f855a; --warn:#b7791f; --bad:#c53030; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#141416; --surface:#1e1e21; --ink:#eee; --muted:#9a9aa2; --line:#333338; --accent:#6d9cff; } }
+* { box-sizing: border-box; }
+body { margin:0; font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; background:var(--bg); color:var(--ink); }
+header { display:flex; flex-wrap:wrap; gap:12px; align-items:center; padding:12px 16px; border-bottom:1px solid var(--line); background:var(--surface); }
+header h1 { font-size:16px; margin:0 8px 0 0; }
+.badge { font: 12px ui-monospace, Menlo, monospace; padding:2px 8px; border-radius:999px; border:1px solid var(--line); color:var(--muted); }
+.badge.sqlite { color:var(--ok); border-color:var(--ok); }
+.badge.csv { color:var(--warn); border-color:var(--warn); }
+.warn { color:var(--warn); font-size:13px; padding:6px 16px; }
+select { font:inherit; padding:4px 8px; border-radius:8px; border:1px solid var(--line); background:var(--bg); color:var(--ink); }
+main { display:grid; grid-template-columns: minmax(0,1.4fr) minmax(0,1fr); gap:16px; padding:16px; }
+@media (max-width: 800px) { main { grid-template-columns: minmax(0,1fr); } }
+.panel { background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:12px; min-width:0; }
+.panel h2 { font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:0 0 8px; font-weight:600; }
+details { margin-left:14px; }
+details > summary { list-style:none; cursor:pointer; padding:4px 6px; border-radius:6px; display:flex; gap:8px; align-items:center; }
+details > summary::-webkit-details-marker { display:none; }
+details > summary::before { content:"▸"; color:var(--muted); width:10px; }
+details[open] > summary::before { content:"▾"; }
+.row { display:flex; gap:8px; align-items:center; padding:4px 6px; border-radius:6px; cursor:pointer; }
+.row:hover, summary:hover { background:var(--bg); }
+.row.sel { background:var(--bg); outline:1px solid var(--accent); }
+.kind { font: 11px ui-monospace, Menlo, monospace; color:var(--muted); text-transform:uppercase; min-width:44px; }
+.title { overflow-wrap:anywhere; }
+.status { margin-left:auto; font-size:12px; color:var(--muted); white-space:nowrap; }
+.status.done, .status.closed, .status.completed, .status.approved, .status.pass { color:var(--ok); }
+.status.in_progress, .status.active, .status.review { color:var(--accent); }
+.status.open, .status.planned, .status.draft { color:var(--muted); }
+.status.fail, .status.reject, .status.blocked { color:var(--bad); }
+.counts { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
+.counts span { font-size:12px; border:1px solid var(--line); border-radius:999px; padding:2px 8px; color:var(--muted); }
+dl { display:grid; grid-template-columns: max-content 1fr; gap:4px 12px; margin:0; font-size:13px; }
+dt { color:var(--muted); }
+dd { margin:0; overflow-wrap:anywhere; }
+pre { white-space:pre-wrap; font: 12px ui-monospace, Menlo, monospace; background:var(--bg); padding:8px; border-radius:8px; margin:8px 0 0; }
+.empty { color:var(--muted); padding:24px; text-align:center; }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="project">OneCoder</h1>
+  <span class="badge" id="source">…</span>
+  <span class="badge" id="updated"></span>
+  <label style="margin-left:auto">Show
+    <select id="filter">
+      <option value="all">all</option>
+      <option value="open">open</option>
+      <option value="in_progress">in progress</option>
+      <option value="done">done</option>
+      <option value="closed">closed</option>
+    </select>
+  </label>
+</header>
+<div class="warn" id="warning" hidden></div>
+<main>
+  <section class="panel">
+    <h2>Specification → epic → task → criterion</h2>
+    <div class="counts" id="counts"></div>
+    <div id="tree"></div>
+  </section>
+  <section class="panel">
+    <h2>Details</h2>
+    <div id="detail"><div class="empty">Select a node.</div></div>
+  </section>
+</main>
+<script>
+"use strict";
+let graph = null;
+let selected = null;
+const open = new Set();
+const $ = (id) => document.getElementById(id);
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined && text !== null) e.textContent = String(text);
+  return e;
+}
+
+function statusClass(s) { return String(s || "").replace(/[^a-z_]/gi, "").toLowerCase(); }
+
+function buildIndex(nodes) {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const kids = new Map();
+  for (const n of nodes) {
+    const p = n.parent && byId.has(n.parent) ? n.parent : null;
+    if (!kids.has(p)) kids.set(p, []);
+    kids.get(p).push(n);
+  }
+  return { byId, kids };
+}
+
+// A node is shown if it matches the filter, or any descendant does.
+function visibleFilter(filter, idx) {
+  const memo = new Map();
+  const ok = (n) => {
+    if (memo.has(n.id)) return memo.get(n.id);
+    // Groups have no status of their own: they show only when a child matches.
+    const self = n.kind !== "group" && (filter === "all" || n.status === filter);
+    const below = (idx.kids.get(n.id) || []).some(ok);
+    memo.set(n.id, self || below);
+    return self || below;
+  };
+  return ok;
+}
+
+function renderRow(n, idx, ok) {
+  const row = el("div", "row" + (selected === n.id ? " sel" : ""));
+  row.append(el("span", "kind", n.kind), el("span", "title", n.title));
+  row.append(el("span", "status " + statusClass(n.status), n.status));
+  row.addEventListener("click", (e) => { e.stopPropagation(); select(n.id); });
+  return row;
+}
+
+function renderNode(n, idx, ok) {
+  const children = (idx.kids.get(n.id) || []).filter(ok);
+  if (!children.length) return renderRow(n, idx, ok);
+  const d = el("details");
+  if (open.has(n.id)) d.open = true;
+  d.addEventListener("toggle", () => { d.open ? open.add(n.id) : open.delete(n.id); });
+  const s = el("summary");
+  s.append(el("span", "kind", n.kind), el("span", "title", n.title), el("span", "status " + statusClass(n.status), n.status));
+  s.addEventListener("click", () => select(n.id));
+  if (selected === n.id) s.classList.add("sel");
+  d.append(s);
+  for (const c of children) d.append(renderNode(c, idx, ok));
+  return d;
+}
+
+function renderTree() {
+  const idx = buildIndex(graph.nodes);
+  const ok = visibleFilter($("filter").value, idx);
+  const tree = $("tree");
+  tree.replaceChildren();
+  const roots = (idx.kids.get(null) || []).filter(ok);
+  if (!roots.length) { tree.append(el("div", "empty", "No work items match this filter.")); return; }
+  for (const r of roots) tree.append(renderNode(r, idx, ok));
+}
+
+function renderCounts() {
+  const box = $("counts");
+  box.replaceChildren();
+  for (const [kind, byStatus] of Object.entries(graph.counts || {})) {
+    for (const [status, n] of Object.entries(byStatus)) {
+      box.append(el("span", "", `${kind} · ${status} · ${n}`));
+    }
+  }
+}
+
+function renderDetail() {
+  const box = $("detail");
+  box.replaceChildren();
+  const n = graph.nodes.find((x) => x.id === selected);
+  if (!n) { box.append(el("div", "empty", "Select a node.")); return; }
+  const parent = graph.nodes.find((x) => x.id === n.parent);
+  const dl = el("dl");
+  const rows = [["kind", n.kind], ["status", n.status], ["source", n.source], ["parent", parent ? parent.title : "(top level)"]];
+  for (const [k, v] of rows) dl.append(el("dt", "", k), el("dd", "", v));
+  box.append(el("h3", "", n.title), dl);
+  if (n.data && Object.keys(n.data).length) box.append(el("pre", "", JSON.stringify(n.data, null, 2)));
+}
+
+// Open every ancestor of a node, so a selected item is never hidden inside a collapsed parent.
+function revealPath(id) {
+  const byId = new Map(graph.nodes.map((n) => [n.id, n]));
+  for (let p = byId.get(id)?.parent; p; p = byId.get(p)?.parent) open.add(p);
+}
+
+function select(id) {
+  selected = id;
+  revealPath(id);
+  renderTree();
+  renderDetail();
+}
+
+function renderHeader() {
+  $("project").textContent = `OneCoder: ${graph.project}`;
+  const src = $("source");
+  src.textContent = graph.source === "sqlite" ? "sqlite index" : "csv (fallback)";
+  src.className = "badge " + (graph.source === "sqlite" ? "sqlite" : "csv");
+  $("updated").textContent = graph.generated_at ? `built ${graph.generated_at}` : "";
+  const w = $("warning");
+  w.hidden = !graph.warning;
+  w.textContent = graph.warning || "";
+}
+
+let lastStamp = null;
+async function refresh() {
+  try {
+    const res = await fetch("/api/graph", { cache: "no-store" });
+    if (!res.ok) throw new Error(res.status);
+    const next = await res.json();
+    if (next.generated_at === lastStamp && graph) return;
+    lastStamp = next.generated_at;
+    const first = graph === null;
+    graph = next;
+    if (first) for (const n of graph.nodes) if (["spec", "epic", "group"].includes(n.kind)) open.add(n.id);
+    if (selected) revealPath(selected);
+    renderHeader();
+    renderCounts();
+    renderTree();
+    if (selected && !graph.nodes.some((n) => n.id === selected)) selected = null;
+    renderDetail();
+  } catch (e) {
+    $("source").textContent = "unreachable";
+    $("source").className = "badge csv";
+  }
+}
+
+$("filter").addEventListener("change", renderTree);
+refresh();
+setInterval(refresh, 2000);
+</script>
+</body>
+</html>

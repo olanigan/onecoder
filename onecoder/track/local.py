@@ -1,6 +1,7 @@
 """LocalTrackStore: Zero-dependency CSV-backed tracking engine."""
 
 import csv
+import uuid
 import json
 import os
 import time
@@ -267,7 +268,7 @@ class LocalTrackStore:
     def create_sprint(self, project: str, name: str, status: str = "planned",
                       starts_at: Optional[str] = None, ends_at: Optional[str] = None,
                       id: Optional[str] = None) -> Dict[str, Any]:
-        sprint_id = id or f"sprint-{slugify(name)}-{int(time.time())}"
+        sprint_id = id or f"sprint-{slugify(name)}-{uuid.uuid4().hex[:8]}"
         now = _now_iso()
         sprint = {
             "id": sprint_id,
@@ -313,7 +314,8 @@ class LocalTrackStore:
                      status: str = "open", labels: Optional[List[str]] = None,
                      id: Optional[str] = None) -> Dict[str, Any]:
         now = _now_iso()
-        issue_id = id or f"issue-{int(time.time()*1000) % 1000000}"
+        # Random, not time-based: two issues created in the same millisecond used to share an id.
+        issue_id = id or f"issue-{uuid.uuid4().hex[:8]}"
         labels_str = json.dumps(labels or [])
         issue = {
             "id": issue_id,

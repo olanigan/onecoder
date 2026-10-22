@@ -15,12 +15,27 @@ python3 -m unittest discover -s tests
 
 ---
 
+## Visual work graph
+
+`onecoder viz` serves a read-only page at `http://127.0.0.1:8765/` that shows the project as
+**specification → epic → task → acceptance criterion**:
+
+* spec: `specs/<name>.md` with frontmatter `id`, `title`, `status`, and `epic: <sprint-id>` (in git)
+* epic: sprint · task: issue · task: governance task (`.onecoder/tasks/<id>`), with its `AC-n` lines
+
+`onecoder viz --print-json` prints the same graph for scripts and agents.
+
+Storage: CSV stays the write path and the fallback. `.onecoder/track.db` is a derived SQLite index,
+rebuilt whenever the CSV, specs, or governance files change. It ignores itself through
+`.onecoder/.gitignore`, so it is never committed. If the index cannot be written, the page is served
+from CSV and shows a warning.
+
 ## Tracking & Agile Governance (CLI + MCP Dual Mode)
 
 OneCoder unifies **macro project/sprint tracking** with **micro task execution**. It operates in two synchronized modes:
 
 1. **Local CLI Mode (Zero-Dependency)**:
-   * 100% Python standard library (built-in SQLite `~/.onecoder/track.db`).
+   * 100% Python standard library. Local data is CSV in `.onecoder/track/`, with a derived SQLite index in `.onecoder/track.db` for `onecoder viz`.
    * No cloud credentials, no external servers, and zero pip packages required.
    * Works completely offline with full sprint, issue, session, and radar capabilities.
 

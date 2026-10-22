@@ -13,5 +13,8 @@ dependencies = []
 [project.scripts]
 onecoder = "onecoder.cli:main"
 
+[tool.setuptools.package-data]
+onecoder = ["viz/page.html"]
+
 [tool.setuptools.packages.find]
 include = ["onecoder*"]
