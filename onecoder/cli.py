@@ -359,6 +359,14 @@ def main(argv=None):
     _add_mode_flags(s)
     s.set_defaults(fn=track_cli.cmd_session)
 
+    # Visual work graph (read-only UI over the tracking data)
+    from .viz import cli as viz_cli
+    s = sub.add_parser("viz", help="Serve the spec -> epic -> task graph as a read-only UI")
+    s.add_argument("--host", default="127.0.0.1", help="Bind address (loopback by default)")
+    s.add_argument("--port", type=int, default=8765)
+    s.add_argument("--print-json", action="store_true", help="Print the graph as JSON and exit")
+    s.set_defaults(fn=viz_cli.cmd_viz)
+
     # MCP server command
     s = sub.add_parser("mcp", help="Run MCP stdio server")
     s.add_argument("--backend", choices=["auto", "local", "remote"], default="auto", help="Storage backend to use")
